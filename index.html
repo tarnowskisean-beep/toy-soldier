@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Toy Soldier — Squad Command</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; overflow: hidden; background: #87b06a; }
+      canvas { display: block; }
+
+      #hud {
+        position: fixed; inset: 0; pointer-events: none;
+        font-family: "Courier New", monospace; color: #eaffea;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.55);
+      }
+
+      #stats { position: absolute; top: 16px; left: 16px;
+        font-size: 16px; font-weight: bold; line-height: 1.5; color: #1b3a1b;
+        text-shadow: 0 1px 2px rgba(255,255,255,0.4); }
+
+      /* Objective banner — top center */
+      #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+        font-size: 18px; font-weight: bold; letter-spacing: 2px; padding: 7px 18px;
+        border-radius: 5px; background: rgba(15, 30, 15, 0.6);
+        border: 2px solid rgba(255,255,255,0.18); white-space: nowrap; }
+
+      #crosshair { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px;
+        transform: translate(-50%, -50%); }
+      #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(20,40,20,0.85); }
+      #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+      #crosshair::after  { top: 8px; left: 0; height: 2px; width: 18px; }
+      #crosshair.enemy::before, #crosshair.enemy::after { background: #ff3b30; }
+
+      #squad { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+        display: flex; gap: 10px; }
+      .card { width: 120px; padding: 8px 10px; border-radius: 6px;
+        background: rgba(15, 30, 15, 0.62); border: 2px solid rgba(255,255,255,0.15);
+        transition: border-color 0.1s, opacity 0.2s; }
+      .card.active { border-color: var(--ring); box-shadow: 0 0 14px var(--ring); }
+      .card.dead { opacity: 0.4; filter: grayscale(1); }
+      .card-top { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: bold; }
+      .card-top .key { background: var(--ring); color: #0a1a0a; border-radius: 3px; padding: 0 5px; font-size: 12px; }
+      .card .bar { margin: 5px 0 3px; height: 7px; background: rgba(0,0,0,0.45); border-radius: 4px; overflow: hidden; }
+      .card .fill { height: 100%; width: 100%; background: #6ad06a; transition: width 0.12s linear; }
+      .card .order { font-size: 11px; letter-spacing: 1px; opacity: 0.85; }
+
+      #ability { position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%);
+        font-size: 15px; font-weight: bold; letter-spacing: 2px; padding: 5px 14px;
+        border-radius: 5px; background: rgba(15, 30, 15, 0.62); border: 2px solid rgba(255,255,255,0.18); }
+      #ability.active { border-color: #ffd24d; color: #ffe9a8; box-shadow: 0 0 12px rgba(255,200,60,0.6); }
+      #ability.cooldown { opacity: 0.4; }
+
+      #scope { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.12s;
+        background: radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.85) 33%); }
+      #scope::before { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 100vh; transform: translate(-50%,-50%); background: rgba(0,0,0,0.6); }
+      #scope::after { content: ""; position: absolute; left: 50%; top: 50%; width: 100vw; height: 2px; transform: translate(-50%,-50%); background: rgba(0,0,0,0.6); }
+      #scope.show { opacity: 1; }
+
+      #vignette { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.2s;
+        box-shadow: inset 0 0 160px 40px rgba(200, 20, 20, 0.7); }
+      #vignette.show { opacity: 1; }
+
+      /* Shared full-screen overlay */
+      .screen { position: absolute; inset: 0; pointer-events: auto; display: flex;
+        flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+      #menu  { background: rgba(20, 40, 20, 0.78); }
+      #start { background: rgba(20, 40, 20, 0.62); }
+      #win   { background: rgba(20, 45, 20, 0.78); }
+      #gameover { background: rgba(45, 12, 12, 0.78); }
+
+      .screen h1 { font-size: 48px; letter-spacing: 4px; margin-bottom: 6px; color: #eaffea; }
+      .screen h2 { font-size: 17px; letter-spacing: 4px; opacity: 0.8; margin-bottom: 18px; font-weight: normal; }
+      .screen .row { font-size: 15px; opacity: 0.9; margin: 3px 0; max-width: 680px; }
+      #win h1 { color: #b6ffb6; }
+      #gameover h1 { color: #ff9a9a; }
+
+      .btnrow { display: flex; gap: 14px; margin-top: 24px; }
+      .btn { font-size: 18px; letter-spacing: 1px; border: 2px solid #eaffea; color: #eaffea;
+        padding: 10px 22px; border-radius: 6px; cursor: pointer; background: rgba(0,0,0,0.15);
+        transition: background 0.12s, transform 0.05s; }
+      .btn:hover { background: rgba(255,255,255,0.16); }
+      .btn:active { transform: translateY(1px); }
+      .btn.locked { opacity: 0.35; cursor: not-allowed; border-style: dashed; }
+
+      /* Mission list on the menu */
+      #missionList { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 4px; width: 460px; }
+      .mission { display: flex; justify-content: space-between; align-items: center;
+        border: 2px solid #eaffea; border-radius: 6px; padding: 12px 16px; cursor: pointer;
+        background: rgba(0,0,0,0.18); text-align: left; transition: background 0.12s; }
+      .mission:hover { background: rgba(255,255,255,0.14); }
+      .mission .m-name { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
+      .mission .m-sector { font-size: 12px; opacity: 0.75; }
+      .mission.locked { opacity: 0.4; cursor: not-allowed; border-style: dashed; }
+      .mission .m-tag { font-size: 12px; opacity: 0.8; }
+
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div id="scope"></div>
+    <div id="vignette"></div>
+    <div id="hud">
+      <div id="stats">TANGOS DOWN <span id="kills">0</span></div>
+      <div id="objective" class="hidden"></div>
+      <div id="crosshair"></div>
+      <div id="ability"></div>
+      <div id="squad"></div>
+
+      <!-- Mission select -->
+      <div id="menu" class="screen">
+        <h1>TOY SOLDIER</h1>
+        <h2>OPERATION PLASTIC STORM</h2>
+        <div id="missionList"></div>
+        <div class="row" style="margin-top:10px; opacity:0.7;">Select a mission to deploy</div>
+      </div>
+
+      <!-- Briefing + deploy (per mission) -->
+      <div id="start" class="screen hidden">
+        <h1 id="briefName">MISSION</h1>
+        <h2 id="briefSector">SECTOR</h2>
+        <div class="row" id="briefText" style="margin-bottom:14px;"></div>
+        <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>CLICK</b> fire • <b>SHIFT</b> sprint</div>
+        <div class="row"><b>1–4 / TAB</b> switch soldier • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold</div>
+        <div class="row"><b>RMB</b> scope/suppress • <b>SPACE</b> grenade/revive <i>(by class)</i></div>
+        <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>
+      </div>
+
+      <!-- Win -->
+      <div id="win" class="screen hidden">
+        <h1>MISSION COMPLETE</h1>
+        <h2 id="winText">SECTOR SECURED</h2>
+        <div class="btnrow">
+          <div class="btn" id="nextBtn">NEXT MISSION</div>
+          <div class="btn" id="winMenuBtn">MENU</div>
+        </div>
+      </div>
+
+      <!-- Lose -->
+      <div id="gameover" class="screen hidden">
+        <h1>SQUAD ELIMINATED</h1>
+        <h2>The tan army holds the field.</h2>
+        <div class="btnrow">
+          <div class="btn" id="retryBtn">RETRY</div>
+          <div class="btn" id="loseMenuBtn">MENU</div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
