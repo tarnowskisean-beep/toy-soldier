@@ -268,6 +268,7 @@ const raycaster = new THREE.Raycaster();
 const SCREEN_CENTER = new THREE.Vector2(0, 0);
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const _aimPoint = new THREE.Vector3();
+const _firePoint = new THREE.Vector3();
 
 function getAim() {
   raycaster.setFromCamera(SCREEN_CENTER, camera);
@@ -283,10 +284,23 @@ function getAim() {
     const pz = ray.origin.z + ray.direction.z * t;
     if (Math.hypot(px - cx, py - cy, pz - cz) < 1.3) { enemy = e; bestT = t; }
   }
-  if (enemy) { _aimPoint.set(enemy.pos.x, 1.1, enemy.pos.z); return { enemy, point: _aimPoint }; }
-  if (ray.intersectPlane(GROUND, _aimPoint)) return { enemy: null, point: _aimPoint };
+  if (enemy) {
+    // Fire AND orders converge on the enemy's torso — wherever it stands,
+    // including up a tower (baseY). Hardcoding y=1.1 here is why tower
+    // guards used to eat your bullets with their floor.
+    _aimPoint.set(enemy.pos.x, (enemy.baseY || 0) + 1.1, enemy.pos.z);
+    _firePoint.copy(_aimPoint);
+    return { enemy, point: _aimPoint, firePoint: _firePoint };
+  }
+  // No target under the crosshair: ORDERS want the ground point you're
+  // looking at; BULLETS want to fly level along the sightline (aiming at
+  // the dirt made every shot dive into the cover in front of you).
+  ray.at(50, _firePoint);
+  if (ray.intersectPlane(GROUND, _aimPoint)) {
+    return { enemy: null, point: _aimPoint, firePoint: _firePoint };
+  }
   ray.at(80, _aimPoint);
-  return { enemy: null, point: _aimPoint };
+  return { enemy: null, point: _aimPoint, firePoint: _firePoint };
 }
 
 let camFov = 70;
@@ -341,7 +355,7 @@ function tick(dt) {
     handleInteract(dt);
 
     squad.update(dt, { input, enemies: enemies.list, bullets, free: enemies.combatStarted });
-    if (input.firing && !mapMode && squad.active.tryFireAt(aim.point, bullets)) {
+    if (input.firing && !mapMode && squad.active.tryFireAt(aim.firePoint, bullets)) {
       // Hearing is handled by bullets.onFire (one rule for every shot) —
       // here it's just the flash and the camera kick.
       muzzleLight.position.copy(squad.active.muzzleWorldPosition());
@@ -440,7 +454,15 @@ function placeCamera(dt = 0) {
   // the camera's side used to bury the view in the box.
   const leanBias = (a.peeking && a.coverBox && a.coverBox.max.y > 1.45) ? 1.3 : 1;
   const sideMag = 1.65 * aimT * leanBias;
-  if (aimT > 0.25) {
+  if (a.inCover && a.aiming && a.canLean !== 0 && a.coverBox && a.coverBox.max.y > 1.45) {
+    // Leaning: the shoulder is DECIDED by the lean — camera rides the open
+    // side, away from the wall. (Clearance casts can't see a wall that sits
+    // BESIDE the boom, which is why left leans used to bury the view.)
+    const n = a.coverSide === 'px' ? [1, 0] : a.coverSide === 'nx' ? [-1, 0]
+            : a.coverSide === 'pz' ? [0, 1] : [0, -1];
+    const lx = -n[1] * a.canLean, lz = n[0] * a.canLean;
+    shoulderSign = (lx * rx + lz * rz) >= 0 ? 1 : -1;
+  } else if (aimT > 0.25) {
     const clearFor = (sign) => {
       const cx = a.position.x + rx * sideMag * sign;
       const cz = a.position.z + rz * sideMag * sign;
@@ -473,6 +495,9 @@ function placeCamera(dt = 0) {
   camDist = want < camDist ? want : camDist + (want - camDist) * Math.min(1, dt * 5);
 
   camera.position.set(tx + dx * camDist, ty + dy * camDist, tz + dz * camDist);
+  // Looking UP swings the boom low — keep the lens off the floorboards
+  // (from down here the sightline rises past the soldier: tower shots).
+  camera.position.y = Math.max(0.5, camera.position.y);
   // Explosions rattle the lens.
   if (shake > 0.005) {
     camera.position.x += (Math.random() - 0.5) * shake * 0.7;

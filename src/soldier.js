@@ -217,7 +217,8 @@ export class Soldier {
     const sens = MOUSE_SENS * (this.zoomed ? 0.4 : this.aiming ? 0.65 : 1);
     this.yaw -= input.mouseDX * sens;
     this.pitch += input.mouseDY * sens;
-    this.pitch = Math.max(-0.2, Math.min(0.9, this.pitch));
+    // -0.55 of up-look matters: tower guards live ~13 degrees above you.
+    this.pitch = Math.max(-0.55, Math.min(0.9, this.pitch));
 
     const fwd = this.forwardVector();
     this._r.set(fwd.z, 0, -fwd.x);              // right = forward rotated 90°

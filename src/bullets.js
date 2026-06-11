@@ -6,7 +6,7 @@
 // we're not allocating garbage every shot.
 
 import * as THREE from 'three';
-import { segHitsRect } from './physics.js';
+import { segBoxEntryT } from './physics.js';
 
 const BULLET_SPEED = 85;
 const BULLET_LIFE = 1.6;
@@ -118,7 +118,7 @@ export class Bullets {
     for (let i = this.active.length - 1; i >= 0; i--) {
       const b = this.active[i];
       const p = b.mesh.position;
-      const px = p.x, pz = p.z;              // remember where it was...
+      const px = p.x, py = p.y, pz = p.z;    // remember where it was...
       p.addScaledVector(b.vel, dt);          // ...then move it
       b.life -= dt;
 
@@ -126,12 +126,12 @@ export class Bullets {
         p.x < this.bounds.minX - 8 || p.x > this.bounds.maxX + 8 ||
         p.z < this.bounds.minZ - 8 || p.z > this.bounds.maxZ + 8;
 
-      // Crate collision: did the path from old->new cross any crate? (Sweeping
-      // the segment, not just testing the point, prevents fast bullets tunneling.)
+      // Crate collision, in honest 3D: the bullet dies only if its flight
+      // segment truly enters a box — a round that PASSES OVER a toy block
+      // keeps flying (the old 2D check ate shots that visibly cleared cover).
       if (!dead) {
         for (const box of this.obstacles) {
-          if (p.y <= box.max.y &&
-              segHitsRect(px, pz, p.x, p.z, box.min.x, box.min.z, box.max.x, box.max.z)) {
+          if (segBoxEntryT(px, py, pz, p.x, p.y, p.z, box) < Infinity) {
             dead = true;
             this.burst(p);          // sparks where it struck
             break;
