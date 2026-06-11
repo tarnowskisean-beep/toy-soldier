@@ -344,10 +344,54 @@ export function createWorld() {
   const night = new THREE.PointLight(0x6a86ff, 18, 30);
   night.position.set(84.5, 5, 45);
   scene.add(night);
+  // The garrison's foyer emplacements (and the player's approach cover).
+  box(1.4, 1.4, 1.4, 79, 37, 0x9a1812, { cover: true, rough: 0.35 });
+  box(1.4, 1.4, 1.4, 90, 37, 0x1a3a9a, { cover: true, rough: 0.35 });
+  box(3.2, 0.85, 0.9, 84.5, 37.5, 0x8a7a4a, { cover: true });
+
+  // --- MISSION PROPS ---
+  // Supply drops: the plane's cargo, scattered across the house. A green
+  // crate over a soft glow ring (bobbed/pulsed by the mission runner).
+  const supplyMat = new THREE.MeshStandardMaterial({ color: 0x2f6b2f, roughness: 0.4 });
+  const supplies = [];
+  for (const [sx, sz] of [[89.5, -8], [132, -36], [126, 13]]) {
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 1.1), supplyMat);
+    crate.position.set(sx, 0.8, sz);
+    crate.castShadow = true;
+    scene.add(crate);
+    const ring = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.7, 1.7, 0.1, 24),
+      new THREE.MeshBasicMaterial({ color: 0x6aff8a, transparent: true, opacity: 0.3 })
+    );
+    ring.position.set(sx, 0.05, sz);
+    scene.add(ring);
+    supplies.push({ x: sx, z: sz, crate, ring, taken: false });
+  }
+
+  // The tan FIELD RADIO in the study — the house's alarm. Olive box, whip
+  // antenna, a blinking call lamp. Shoot it (loud) or smash it (quiet).
+  const radioGroup = new THREE.Group();
+  const radioMat = new THREE.MeshStandardMaterial({ color: 0x5c5a3a, roughness: 0.5 });
+  const radioBody = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.15, 0.95), radioMat);
+  radioBody.position.y = 0.58;
+  radioBody.castShadow = true;
+  radioGroup.add(radioBody);
+  const antenna = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.4, 0.06), radioMat);
+  antenna.position.set(0.62, 2.2, 0);
+  radioGroup.add(antenna);
+  const lamp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff4030 })
+  );
+  lamp.position.set(-0.55, 1.25, 0.3);
+  radioGroup.add(lamp);
+  radioGroup.position.set(136, 0, 28);
+  scene.add(radioGroup);
+  const radio = { pos: new THREE.Vector3(136, 0, 28), alive: true, hp: 30, group: radioGroup, lamp };
 
   // Bake the walkability grid AFTER all furniture is placed — every AI
   // routes around the house with this.
   const nav = new NavGrid(BOUNDS, obstacles);
 
-  return { scene, obstacles, coverPoints, exit, exitGlow: glow, nav };
+  return { scene, obstacles, coverPoints, exit, exitGlow: glow, nav, supplies, radio };
 }

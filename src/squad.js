@@ -48,6 +48,16 @@ export class Squad {
     scene.add(this.ring);
 
     this._slot = new THREE.Vector3();
+    this._threat = new THREE.Vector3();
+  }
+
+  // A supply drop: every living member pockets reserve ammo and a patch-up.
+  resupply(reservePct, healAmount) {
+    for (const m of this.members) {
+      if (!m.alive) continue;
+      m.reserve = Math.min(m.cls.reserve, m.reserve + Math.round(m.cls.reserve * reservePct));
+      m.heal(healAmount);
+    }
   }
 
   get active() { return this.members[this.activeIndex]; }
@@ -170,7 +180,10 @@ export class Squad {
         const dy = b.mesh.position.y - (m.position.y + (m.crouched ? 0.75 : 1.1));
         const dz = b.mesh.position.z - m.position.z;
         if (dx * dx + dy * dy + dz * dz < 0.9 * 0.9) {
-          m.takeDamage(b.damage);
+          // The tracer points back at the shooter — good enough for the
+          // damage-direction arrow.
+          this._threat.set(m.position.x - b.dir.x * 12, 0, m.position.z - b.dir.z * 12);
+          m.takeDamage(b.damage, this._threat);
           bullets.retireBullet(b);
           break;
         }

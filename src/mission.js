@@ -1,104 +1,250 @@
-// mission.js — runs one mission: spawns its enemies, tracks the objective, and
-// decides win ('won') or loss ('lost'). The main loop asks it for status text and
-// state each frame.
+// mission.js — runs one mission as a CHAIN OF STAGES (see docs/MISSION_DESIGN_M1.md).
+//
+// A stage is what the player is DOING right now:
+//   regroup — your crash-scattered squadmates lie downed; stand beside one to
+//             get him on his feet (any member can — they're stunned, not shot)
+//   multi   — several parts at once, any order (collect supplies / cut the radio)
+//   escape  — reach the exit zone and hold it, uncontested
+//
+// The runner also owns the mission props (supply crates bob, the radio lamp
+// blinks) and decides win/lose. Main asks it for status text each frame.
 
-import * as THREE from 'three';
+import { sfx } from './audio.js';
+
+const RESCUE_RANGE = 2.6;
+const RESCUE_TIME = 1.8;       // seconds beside a downed buddy to wake him
+const PICKUP_RANGE = 2.0;
+const SMASH_RANGE = 1.9;
+const SMASH_TIME = 1.5;        // seconds beside the radio to cut it quietly
+const RESUPPLY_PCT = 0.5;      // a crate refills half your starting reserve
+const RESUPPLY_HEAL = 20;
 
 export class MissionRunner {
-  constructor(def, scene, exit) {
+  constructor(def, scene, world) {
     this.def = def;
     this.scene = scene;
-    this.exit = exit;          // the front-door breach zone (escape missions)
-    this.state = 'active';     // 'active' | 'won' | 'lost'
-    this.timeAcc = 0;          // survive countdown / secure hold timer
+    this.world = world;          // { exit, supplies, radio } built by createWorld
+    this.state = 'active';       // 'active' | 'won' | 'lost'
+    this.stageIdx = 0;
+    this.timeAcc = 0;            // escape hold timer
+    this.t = 0;                  // prop animation clock
     this.startKills = 0;
-    this.zone = null;
-
-    // Secure missions get a visible target ring on the ground.
-    if (def.objective.type === 'secure') {
-      const z = def.objective.zone;
-      const ring = new THREE.Mesh(
-        new THREE.CylinderGeometry(z.r, z.r, 0.15, 36),
-        new THREE.MeshBasicMaterial({ color: 0x6fff6f, transparent: true, opacity: 0.22 })
-      );
-      ring.position.set(z.x, 0.08, z.z);
-      scene.add(ring);
-      this.zone = ring;
-    }
+    this.rescueT = new Map();    // downed member -> seconds of company
+    this.smashT = 0;
+    this.squad = null;
+    this.onToast = null;         // hook(text): stage banner in the HUD
   }
 
-  // Spawn the mission's starting enemies. Call once after construction.
-  begin(enemies) {
+  // Spawn the occupation, wire the alarm, scatter the squad. Call once.
+  begin(enemies, squad) {
+    this.squad = squad;
     this.startKills = enemies.kills;
     if (this.def.enemyLayout) enemies.spawnLayout(this.def.enemyLayout);
+    enemies.radio = this.world.radio || null;
+    enemies.reserveLayout = this.def.reserve || null;
+
+    // The crash threw them across the room. They lie where they landed.
+    if (this.def.scatter) {
+      for (const s of this.def.scatter) {
+        const m = squad.members[s.member];
+        m.position.set(s.x, 0, s.z);
+        m.alive = false;
+        m.downed = true;
+        m.crashDowned = true;
+        m.health = 0;
+        m.figure.position.copy(m.position);
+        m.figure.position.y = 0.3;
+        m.figure.rotation.z = Math.PI / 2;
+      }
+    }
+    if (this.stage() && this.onToast) this.onToast(this.stage().toast || '');
   }
+
+  stage() { return this.def.stages[this.stageIdx]; }
 
   killCount(enemies) {
     return enemies.kills - this.startKills;
   }
 
-  update(dt, squad, enemies) {
+  _advance() {
+    this.stageIdx++;
+    sfx.objective();
+    if (this.stageIdx >= this.def.stages.length) {
+      this.state = 'won';
+    } else if (this.onToast) {
+      this.onToast(this.stage().toast || '');
+    }
+  }
+
+  update(dt, squad, enemies, bullets) {
     if (this.state !== 'active') return;
-    const o = this.def.objective;
-    // (No reinforcement waves anywhere — campaign rule: the enemy you meet is
-    // the enemy that lives there.)
+    this.t += dt;
+    this._animateProps();
 
-    // Objective progress.
-    if (o.type === 'eliminate') {
-      if (this.killCount(enemies) >= o.count) this.state = 'won';
-    } else if (o.type === 'survive') {
-      this.timeAcc += dt;
-      if (this.timeAcc >= o.seconds) this.state = 'won';
-    } else if (o.type === 'secure') {
-      const z = o.zone;
-      let inside = false;
-      for (const m of squad.members) {
-        if (!m.alive) continue;
-        if (Math.hypot(m.position.x - z.x, m.position.z - z.z) < z.r) { inside = true; break; }
+    const st = this.stage();
+    if (st.type === 'regroup') {
+      if (this._regroup(dt, squad)) this._advance();
+    } else if (st.type === 'multi') {
+      // Parts run in PARALLEL — the order is the player's plan.
+      let done = true;
+      for (const part of st.parts) {
+        if (part.type === 'collect' && !this._collect(squad)) done = false;
+        if (part.type === 'destroy' && !this._destroy(dt, squad, bullets)) done = false;
       }
-      // Progress while a soldier holds it; bleed off (slowly) when nobody does.
-      this.timeAcc = inside
-        ? this.timeAcc + dt
-        : Math.max(0, this.timeAcc - dt * 0.5);
-      if (this.zone) this.zone.material.opacity = inside ? 0.45 : 0.22;
-      if (this.timeAcc >= o.seconds) this.state = 'won';
+      if (done) this._advance();
+    } else if (st.type === 'escape') {
+      this._escape(dt, st, squad, enemies);
     }
 
-    if (o.type === 'escape') {
-      // Any living member in the door zone, with no living tan contesting it.
-      const z = this.exit;
-      let inside = false, contested = false;
-      for (const m of squad.members) {
-        if (m.alive && Math.hypot(m.position.x - z.x, m.position.z - z.z) < z.r) inside = true;
-      }
-      for (const e of enemies.list) {
-        if (Math.hypot(e.pos.x - z.x, e.pos.z - z.z) < z.r + 9) { contested = true; break; }
-      }
-      this.timeAcc = (inside && !contested)
-        ? this.timeAcc + dt
-        : Math.max(0, this.timeAcc - dt * 0.6);
-      if (this.timeAcc >= o.holdSeconds) this.state = 'won';
-    }
-
-    // Loss: the whole squad is down.
+    // Loss: the whole squad is down — at any stage.
     if (!squad.alive) this.state = 'lost';
   }
 
+  // --- Stage: REGROUP. Stand beside a downed buddy to get him up. ---
+  _regroup(dt, squad) {
+    let remaining = 0;
+    for (const m of squad.members) {
+      if (!m.crashDowned) continue;
+      remaining++;
+      let company = false;
+      for (const o of squad.members) {
+        if (!o.alive) continue;
+        if (o.position.distanceTo(m.position) < RESCUE_RANGE) { company = true; break; }
+      }
+      const t = (this.rescueT.get(m) || 0);
+      if (company) {
+        this.rescueT.set(m, t + dt);
+        if (t + dt >= RESCUE_TIME) {
+          m.revive(0.6);
+          sfx.pickup();
+          remaining--;
+        }
+      } else if (t > 0) {
+        this.rescueT.set(m, Math.max(0, t - dt * 2));
+      }
+    }
+    return remaining === 0;
+  }
+
+  // --- Part: COLLECT the supply drops. Walk over one to take it. ---
+  _collect(squad) {
+    let allTaken = true;
+    for (const s of this.world.supplies) {
+      if (s.taken) continue;
+      let taken = false;
+      for (const m of squad.members) {
+        if (!m.alive) continue;
+        if (Math.hypot(m.position.x - s.x, m.position.z - s.z) < PICKUP_RANGE) { taken = true; break; }
+      }
+      if (taken) {
+        s.taken = true;
+        s.crate.visible = false;
+        s.ring.visible = false;
+        squad.resupply(RESUPPLY_PCT, RESUPPLY_HEAL);
+        sfx.pickup();
+      } else {
+        allTaken = false;
+      }
+    }
+    return allTaken;
+  }
+
+  // --- Part: DESTROY the radio. Shoot it (loud) or stand beside it (quiet). ---
+  _destroy(dt, squad, bullets) {
+    const r = this.world.radio;
+    if (!r || !r.alive) return true;
+
+    // Bullets vs the radio box.
+    for (let i = bullets.active.length - 1; i >= 0; i--) {
+      const b = bullets.active[i];
+      if (b.team !== 'player') continue;
+      const dx = b.mesh.position.x - r.pos.x;
+      const dy = b.mesh.position.y - 0.7;
+      const dz = b.mesh.position.z - r.pos.z;
+      if (dx * dx + dy * dy + dz * dz < 1.2 * 1.2) {
+        r.hp -= b.damage;
+        bullets.burst(b.mesh.position);
+        bullets.retireBullet(b);
+      }
+    }
+
+    // The quiet way: stand over it and rip the wires out.
+    let smashing = false;
+    for (const m of squad.members) {
+      if (!m.alive) continue;
+      if (Math.hypot(m.position.x - r.pos.x, m.position.z - r.pos.z) < SMASH_RANGE) { smashing = true; break; }
+    }
+    this.smashT = smashing ? this.smashT + dt : Math.max(0, this.smashT - dt * 2);
+
+    if (r.hp <= 0 || this.smashT >= SMASH_TIME) {
+      r.alive = false;
+      r.lamp.visible = false;
+      r.group.rotation.z = 1.1;            // kicked over
+      r.group.position.y = 0.35;
+      sfx.kill();
+      return true;
+    }
+    return false;
+  }
+
+  // --- Stage: ESCAPE. Any living member in the door zone, uncontested. ---
+  _escape(dt, st, squad, enemies) {
+    const z = this.world.exit;
+    let inside = false, contested = false;
+    for (const m of squad.members) {
+      if (m.alive && Math.hypot(m.position.x - z.x, m.position.z - z.z) < z.r) inside = true;
+    }
+    for (const e of enemies.list) {
+      if (Math.hypot(e.pos.x - z.x, e.pos.z - z.z) < z.r + 9) { contested = true; break; }
+    }
+    this.timeAcc = (inside && !contested)
+      ? this.timeAcc + dt
+      : Math.max(0, this.timeAcc - dt * 0.6);
+    if (this.timeAcc >= st.holdSeconds) this.state = 'won';
+  }
+
+  // Supply crates bob and shimmer; the radio's call lamp blinks until it dies.
+  _animateProps() {
+    if (this.world.supplies) {
+      this.world.supplies.forEach((s, i) => {
+        if (s.taken) return;
+        s.crate.position.y = 0.8 + Math.sin(this.t * 2.5 + i * 2) * 0.18;
+        s.crate.rotation.y = this.t * 0.6 + i;
+        s.ring.material.opacity = 0.22 + 0.14 * Math.sin(this.t * 3 + i);
+      });
+    }
+    const r = this.world.radio;
+    if (r && r.alive) r.lamp.visible = Math.sin(this.t * 6) > -0.2;
+  }
+
   statusText(enemies) {
-    const o = this.def.objective;
-    if (o.type === 'eliminate') {
-      return `ELIMINATE TANGOS   ${Math.min(this.killCount(enemies), o.count)} / ${o.count}`;
+    const st = this.stage();
+    if (!st) return '';
+    const quiet = enemies.firstSpotted ? '' : '   ·   UNDETECTED';
+
+    if (st.type === 'regroup') {
+      const total = this.def.scatter.length;
+      const left = this.squad ? this.squad.members.filter((m) => m.crashDowned).length : total;
+      return `FIND YOUR SQUAD   ${total - left} / ${total}${quiet}`;
     }
-    if (o.type === 'survive') {
-      return `HOLD THE LINE   ${Math.max(0, Math.ceil(o.seconds - this.timeAcc))}s`;
+    if (st.type === 'multi') {
+      const bits = [];
+      for (const part of st.parts) {
+        if (part.type === 'collect') {
+          const taken = this.world.supplies.filter((s) => s.taken).length;
+          bits.push(`SUPPLIES ${taken} / ${this.world.supplies.length}`);
+        } else if (part.type === 'destroy') {
+          const r = this.world.radio;
+          if (!r.alive) bits.push('ALARM CUT ✓');
+          else if (this.smashT > 0.15) bits.push(`CUTTING THE ALARM ${Math.min(100, Math.round(this.smashT / SMASH_TIME * 100))}%`);
+          else bits.push('CUT THE ALARM');
+        }
+      }
+      return bits.join('   ·   ') + quiet;
     }
-    if (o.type === 'secure') {
-      return `SECURE THE ZONE   ${Math.min(this.timeAcc, o.seconds).toFixed(1)} / ${o.seconds}s`;
-    }
-    if (o.type === 'escape') {
-      if (this.timeAcc > 0.05) return `BREACHING THE FRONT DOOR   ${this.timeAcc.toFixed(1)} / ${o.holdSeconds}s`;
-      const tag = enemies.firstSpotted ? '' : '   ·   UNDETECTED';
-      return `ESCAPE THE HOUSE — reach the front door   (tan: ${enemies.list.length})${tag}`;
+    if (st.type === 'escape') {
+      if (this.timeAcc > 0.05) return `BREACHING THE FRONT DOOR   ${this.timeAcc.toFixed(1)} / ${st.holdSeconds}s`;
+      return `ESCAPE — reach the front door   (tan: ${enemies.list.length})`;
     }
     return '';
   }

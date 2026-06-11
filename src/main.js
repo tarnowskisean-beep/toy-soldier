@@ -30,7 +30,8 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerH
 const CAM_DISTANCE = 7, CAM_HEIGHT = 2.2;
 
 // --- Build the world + squad (enemies spawn when a mission starts) ---
-const { scene, obstacles, coverPoints, exit, exitGlow, nav } = createWorld();
+const { scene, obstacles, coverPoints, exit, exitGlow, nav, supplies, radio } = createWorld();
+const world = { exit, supplies, radio };
 const input = new Input(renderer.domElement);
 const squad = new Squad(scene, obstacles, nav);
 const bullets = new Bullets(scene, obstacles);
@@ -55,6 +56,7 @@ const $ = (id) => document.getElementById(id);
 const menuEl = $('menu'), startEl = $('start'), winEl = $('win'), loseEl = $('gameover');
 const objectiveEl = $('objective'), crosshair = $('crosshair');
 const vignette = $('vignette'), abilityEl = $('ability'), scopeEl = $('scope');
+const ammoEl = $('ammo'), dmgdirEl = $('dmgdir');
 
 const getUnlocked = () => parseInt(localStorage.getItem('ts_unlocked') || '1', 10);
 const setScreen = (s) => localStorage.setItem('ts_screen', s);
@@ -114,11 +116,25 @@ function startPlaying() {
     setTimeout(() => card.classList.add('fade'), 3200);
     setTimeout(() => card.classList.add('hidden'), 4600);
   }
-  mission = new MissionRunner(currentDef, scene, exit);
-  mission.begin(enemies);
+  mission = new MissionRunner(currentDef, scene, world);
+  mission.onToast = showToast;
+  mission.begin(enemies, squad);
+  window.game.mission = mission;
+  window.game.world = world;
   objectiveEl.classList.remove('hidden');
   state = 'playing';
   input.requestLock();
+}
+
+// Stage banner: slides in under the objective line, lingers, fades.
+let toastTimer = null;
+function showToast(text) {
+  const el = $('toast');
+  if (!el || !text) return;
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
 }
 
 function onWin() {
@@ -230,6 +246,7 @@ function tick(dt) {
     if (input.consume('KeyH')) squad.orderHold();
     if (input.consume('KeyC')) squad.active.crouched = !squad.active.crouched;
     if (input.consume('KeyM')) mapMode = !mapMode;
+    if (input.consume('KeyR')) squad.active.startReload();
 
     handleAbility(aim);
 
@@ -252,6 +269,8 @@ function tick(dt) {
 
     updateSquadHUD(squad, enemies.kills);
     updateAbilityHUD();
+    updateAmmoHUD();
+    updateDamageHUD();
     crosshair.classList.toggle('hit', enemies.hitFlash > 0);
 
     // Footsteps from actual ground covered; a kill gets its plastic THOCK.
@@ -264,7 +283,7 @@ function tick(dt) {
     vignette.classList.toggle('show', squad.active.alive && squad.active.health < 35);
 
     // --- Mission objective ---
-    mission.update(dt, squad, enemies);
+    mission.update(dt, squad, enemies, bullets);
     objectiveEl.textContent = mission.statusText(enemies);
     if (mission.state === 'won') onWin();
     else if (mission.state === 'lost') onLose();
@@ -275,9 +294,12 @@ function tick(dt) {
 }
 window.game.step = (frames = 1, dt = 1 / 60) => { for (let i = 0; i < frames; i++) tick(dt); };
 
-// Only big slabs (walls, shelf, fridge, couch back) push the camera around —
-// colliding with every toy block would make the boom jitter constantly.
-const cameraBlockers = obstacles.filter((b) => b.max.y >= 6);
+// Only big slabs (walls, couch, wreck, fridge, shelf) push the camera around —
+// colliding with every toy block or table leg would make the boom jitter
+// constantly. "Big" = tall enough to fill the frame AND wide enough that you
+// can't see past it.
+const cameraBlockers = obstacles.filter((b) =>
+  b.max.y >= 3.5 && (b.max.x - b.min.x) * (b.max.z - b.min.z) >= 5);
 let camDist = CAM_DISTANCE;
 
 function placeCamera(dt = 0) {
@@ -364,13 +386,49 @@ function handleAbility(aim) {
 }
 
 function updateZoom(dt) {
-  const target = squad.active.zoomed ? 28 : 70;
+  // Scope narrows, sprint widens — the lens tells your legs' story.
+  const a = squad.active;
+  const target = a.zoomed ? 28 : (a.sprinting ? 76 : 70);
   camFov += (target - camFov) * Math.min(1, dt * 12);
   if (Math.abs(camera.fov - camFov) > 0.01) {
     camera.fov = camFov;
     camera.updateProjectionMatrix();
   }
-  scopeEl.classList.toggle('show', squad.active.zoomed);
+  scopeEl.classList.toggle('show', a.zoomed);
+}
+
+function updateAmmoHUD() {
+  const a = squad.active;
+  if (a.reloading > 0) {
+    ammoEl.textContent = 'RELOADING…';
+    ammoEl.classList.add('reloading');
+    ammoEl.classList.remove('low');
+  } else {
+    ammoEl.textContent = `${a.mag} / ${a.reserve}`;
+    ammoEl.classList.remove('reloading');
+    ammoEl.classList.toggle('low', a.mag <= Math.ceil(a.cls.mag * 0.25));
+  }
+}
+
+// The red arc that says WHERE the hurt came from, and a pulse that says NOW.
+let lastPulseAt = 0;
+function updateDamageHUD() {
+  const a = squad.active;
+  const since = performance.now() - a.lastHitAt;
+  if (since < 700) {
+    const worldAng = Math.atan2(a.lastHitFrom.x - a.position.x, a.lastHitFrom.z - a.position.z);
+    const rel = worldAng - a.yaw;                      // 0 = dead ahead
+    dmgdirEl.style.transform = `translate(-50%, -50%) rotate(${(-rel * 180 / Math.PI).toFixed(1)}deg)`;
+    dmgdirEl.style.opacity = (1 - since / 700) * 0.9;
+    if (a.lastHitAt !== lastPulseAt) {
+      lastPulseAt = a.lastHitAt;
+      vignette.classList.remove('pulse');
+      void vignette.offsetWidth;                       // restart the CSS animation
+      vignette.classList.add('pulse');
+    }
+  } else {
+    dmgdirEl.style.opacity = 0;
+  }
 }
 
 function updateAbilityHUD() {

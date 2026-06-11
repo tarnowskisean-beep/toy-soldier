@@ -89,6 +89,79 @@ class Sfx {
     o.start(t); o.stop(t + 0.12);
   }
 
+  // Magazine out, magazine in: two mechanical clicks, a beat apart.
+  reload() {
+    if (!this.ctx) return;
+    for (const [dt, f] of [[0, 900], [0.22, 1300]]) {
+      const t = this.ctx.currentTime + dt;
+      const o = this.ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = f;
+      const g = this.ctx.createGain();
+      this._env(g, t, 0.12, 0.03);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.05);
+    }
+  }
+
+  // The hollow click of an empty rifle.
+  dry() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = 1600;
+    const g = this.ctx.createGain();
+    this._env(g, t, 0.08, 0.025);
+    o.connect(g).connect(this.master);
+    o.start(t); o.stop(t + 0.04);
+  }
+
+  // Scooping up supplies / getting a buddy on his feet: two rising notes.
+  pickup() {
+    if (!this.ctx) return;
+    [660, 990].forEach((f, i) => {
+      const t = this.ctx.currentTime + i * 0.09;
+      const o = this.ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.value = f;
+      const g = this.ctx.createGain();
+      this._env(g, t, 0.22, 0.16);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.25);
+    });
+  }
+
+  // Objective complete: a small confident three-note rise.
+  objective() {
+    if (!this.ctx) return;
+    [523, 659, 880].forEach((f, i) => {
+      const t = this.ctx.currentTime + i * 0.11;
+      const o = this.ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.value = f;
+      const g = this.ctx.createGain();
+      this._env(g, t, 0.26, 0.3);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.5);
+    });
+  }
+
+  // The tan field radio screaming for help: a two-tone siren burst.
+  alarm() {
+    if (!this.ctx) return;
+    for (let i = 0; i < 4; i++) {
+      const t = this.ctx.currentTime + i * 0.42;
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(i % 2 ? 620 : 470, t);
+      const g = this.ctx.createGain();
+      this._env(g, t, 0.16, 0.36);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.4);
+    }
+  }
+
   sting(win) {
     if (!this.ctx) return;
     const notes = win ? [523, 659, 784, 1047] : [392, 311, 262];

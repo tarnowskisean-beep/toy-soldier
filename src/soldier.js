@@ -10,6 +10,7 @@ import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
 import { navStep } from './navgrid.js';
 import { BOUNDS } from './world.js';
+import { sfx } from './audio.js';
 
 const MOUSE_SENS = 0.0022;
 
@@ -42,8 +43,20 @@ export class Soldier {
     this.health = classDef.hp;
     this.alive = true;
     this.downed = false;     // killed but revivable by a medic
+    this.crashDowned = false;// knocked out by the crash — ANY squadmate can wake him
     this.fireCooldown = 0;
     this.abilityCd = 0;      // cooldown on press-abilities (grenade/revive)
+
+    // Ammo: a magazine you burn and a reserve you carry. AI squadmates manage
+    // theirs off-book — the economy is the player's problem by design.
+    this.mag = classDef.mag;
+    this.reserve = classDef.reserve;
+    this.reloading = 0;      // seconds left on the current reload
+    this.dryCd = 0;          // rate-limits the empty-rifle click
+
+    // Where the last hit came from (drives the HUD damage-direction arrow).
+    this.lastHitFrom = new THREE.Vector3();
+    this.lastHitAt = -1e9;
     this.suppressing = false;// Heavy: holding the suppress ability this frame
     this.zoomed = false;     // Sniper: holding scope this frame
     this.crouched = false;   // C toggles: slower, tighter aim, harder to spot
@@ -77,10 +90,27 @@ export class Soldier {
     return s;
   }
 
+  // Start swapping magazines (R, or automatic on an empty mag).
+  startReload() {
+    if (this.reloading > 0 || this.mag >= this.cls.mag || this.reserve <= 0) return;
+    this.reloading = this.cls.reload;
+    sfx.reload();
+  }
+
   update(dt, ctx) {
     if (!this.alive) return;
     this.fireCooldown -= dt;
     this.abilityCd = Math.max(0, this.abilityCd - dt);
+    this.dryCd = Math.max(0, this.dryCd - dt);
+    if (this.reloading > 0) {
+      this.reloading -= dt;
+      if (this.reloading <= 0) {
+        const take = Math.min(this.cls.mag - this.mag, this.reserve);
+        this.mag += take;
+        this.reserve -= take;
+        this.reloading = 0;
+      }
+    }
 
     if (ctx.isActive) this._controlPlayer(ctx.input, dt);
     else              this._controlAI(dt, ctx);
@@ -127,9 +157,20 @@ export class Soldier {
   // Player firing — called from main when the mouse is held. `aimPoint` is the
   // world point under the crosshair, so shots go where you're actually looking.
   tryFireAt(aimPoint, bullets) {
-    if (!this.alive || this.fireCooldown > 0) return false;
+    if (!this.alive || this.fireCooldown > 0 || this.reloading > 0) return false;
+    if (this.mag <= 0) {
+      if (this.reserve > 0) {
+        this.startReload();
+      } else if (this.dryCd <= 0) {
+        sfx.dry();               // out. Find a supply drop.
+        this.dryCd = 0.35;
+      }
+      return false;
+    }
     bullets.fire(this.muzzleWorldPosition(), this._aimDir(aimPoint), 'player', this.cls.damage);
+    this.mag--;
     this.fireCooldown = this.fireInterval();
+    if (this.mag === 0 && this.reserve > 0) this.startReload();
     return true;
   }
 
@@ -212,8 +253,13 @@ export class Soldier {
     return dir.normalize().clone();
   }
 
-  takeDamage(amount) {
+  // `fromPos` ({x,z}, optional) = where the hurt came from, for the HUD arrow.
+  takeDamage(amount, fromPos) {
     if (!this.alive) return;
+    if (fromPos) {
+      this.lastHitFrom.set(fromPos.x, 0, fromPos.z);
+      this.lastHitAt = performance.now();
+    }
     this.health = Math.max(0, this.health - amount);
     if (this.health === 0) this._die();
   }
@@ -231,10 +277,12 @@ export class Soldier {
     this.figure.position.y = 0.3;
   }
 
-  // Brought back by a medic: stand up with a fraction of max health.
+  // Brought back by a medic (or shaken awake after the crash): stand up with
+  // a fraction of max health.
   revive(pct) {
     this.alive = true;
     this.downed = false;
+    this.crashDowned = false;
     this.health = Math.round(this.maxHealth * pct);
     this.figure.rotation.z = 0;
     this.figure.position.y = 0;

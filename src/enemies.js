@@ -12,20 +12,30 @@ import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
 import { navStep } from './navgrid.js';
 import { BOUNDS } from './world.js';
+import { sfx } from './audio.js';
 
-const ENEMY_HP = 40;
-const ENEMY_SPEED = 5;
+// One brain, three bodies. RIFLEMAN holds his post and fights from cover.
+// SCOUT is fast and frail — spooked, he RUNS FOR THE RADIO instead of
+// fighting (kill him before he rounds the corner). GUNNER is a slow wall of
+// plastic who walks 4-round bursts at you.
+export const TYPES = {
+  rifle:  { hp: 40, speed: 5,   damage: 13, fireInterval: 0.8, spread: 0.07,
+            fig: {} },
+  scout:  { hp: 25, speed: 7.5, damage: 8,  fireInterval: 1.0, spread: 0.09,
+            runner: true, fig: { rifleLength: 0.45 } },
+  gunner: { hp: 70, speed: 3.6, damage: 9,  fireInterval: 0.09, spread: 0.12,
+            burst: 4, burstPause: 1.5, fig: { bulky: true, rifleLength: 1.3 } },
+};
+
 const ENEMY_RANGE = 30;        // max engagement distance once alerted
 const ENEMY_PREFERRED = 14;    // likes to fight from about here
-const ENEMY_FIRE_INTERVAL = 0.8;
-const ENEMY_DAMAGE = 13;       // getting caught in the open has to HURT
-const ENEMY_SPREAD = 0.07;
 const COVER_SEARCH = 24;
 const COVER_RECHECK = 2.5;
 const HIT_RADIUS = 0.95;
 const TORSO_Y = 1.1;           // where bullets land / where you aim
 const TOUCH_RANGE = 2.0;
 const TOUCH_DPS = 20;
+const CALL_TIME = 1.5;         // seconds at the radio to raise the alarm
 
 // Detection model.
 const SIGHT_RANGE = 23;        // how far a sentry can see
@@ -67,16 +77,21 @@ export class Enemies {
     this.combatStarted = false;    // green ROE: squad AI holds fire until this
     this.firstSpotted = false;     // drops the UNDETECTED tag
     this.hitFlash = 0;             // >0 briefly when a player bullet lands (HUD hitmarker)
+    this.radio = null;             // the tan field radio (mission wires it up)
+    this.reserveLayout = null;     // who comes through the door if the alarm sounds
+    this.alarmRaised = false;
     this._v = new THREE.Vector3();
     this._g = new THREE.Vector3();
   }
 
-  // Spawn the mission's layout: [{ x, z, facing(rad), patrol?: {x, z} }, ...]
+  // Spawn the mission's layout:
+  // [{ x, z, facing(rad), type?: 'rifle'|'scout'|'gunner', patrol?: {x, z} }, ...]
   // Spawns are clamped to standable ground — a spawn inside furniture would be
   // blind (LOS from inside a box always fails) and stuck.
   spawnLayout(layout) {
     for (const s of layout) {
-      const fig = createFigure(0xc2a86a);
+      const T = TYPES[s.type || 'rifle'];
+      const fig = createFigure(0xc2a86a, T.fig);
       const spot = this.nav.nearestOpen(s.x, s.z);
       const pos = new THREE.Vector3(spot.x, 0, spot.z);
       fig.position.copy(pos);
@@ -91,16 +106,35 @@ export class Enemies {
 
       this.list.push({
         fig, pos, tell,
-        hp: ENEMY_HP,
+        type: s.type || 'rifle',
+        hp: T.hp, speed: T.speed, damage: T.damage,
+        fireInterval: T.fireInterval, spread: T.spread,
+        burst: T.burst || 0, burstPause: T.burstPause || 0, burstLeft: T.burst || 0,
+        runner: !!T.runner,
         fireCd: Math.random() * 0.5,
         recheck: 0, cover: null, suppressed: 0, stagger: 0,
-        alerted: false, aware: 0, alertFlash: 0,
+        alerted: false, aware: 0, alertFlash: 0, alertedFor: 0, callT: 0,
         facing: s.facing,
         home: { x: spot.x, z: spot.z, facing: s.facing },   // the post he returns to
         lastKnown: new THREE.Vector3(),                      // where he THINKS you are
         hasIntel: false, searching: false, searchT: 0,
         patrol: s.patrol ? { a: { x: spot.x, z: spot.z }, b: { ...s.patrol }, toB: true } : null,
       });
+    }
+  }
+
+  // The radio got through: the porch reserve comes in the front door, hunting.
+  raiseAlarm(squad) {
+    if (this.alarmRaised) return;
+    this.alarmRaised = true;
+    sfx.alarm();
+    if (!this.reserveLayout) return;
+    const before = this.list.length;
+    this.spawnLayout(this.reserveLayout);
+    const intel = squad && squad.active.alive ? squad.active.position : null;
+    for (let i = before; i < this.list.length; i++) {
+      this.alert(this.list[i], intel);
+      this.list[i].alertFlash = 0;   // they arrive hunting, not startled
     }
   }
 
@@ -218,8 +252,10 @@ export class Enemies {
       e.alertFlash = Math.max(0, e.alertFlash - dt);
 
       if (!e.alerted) {
+        e.alertedFor = 0;
         this._sentry(e, dt, squad);
       } else {
+        e.alertedFor += dt;
         this._fight(e, dt, squad, bullets);
       }
 
@@ -320,13 +356,40 @@ export class Enemies {
       target = m; tDist = d;
     }
 
+    // RUN FOR THE RADIO: a spooked SCOUT bolts for it (he only fights
+    // cornered). ONLY scouts run — five sprinters you can see, chase, and
+    // learn; if every rifleman could call it in too, any noise anywhere
+    // would guarantee the alarm. Reaching it raises it — kill the runner
+    // or kill the radio.
+    const radio = this.radio;
+    if (radio && radio.alive && !this.alarmRaised) {
+      const wantsRun = e.runner && !(target && tDist < 9);
+      if (wantsRun) {
+        const rd = Math.hypot(radio.pos.x - e.pos.x, radio.pos.z - e.pos.z);
+        if (rd > 2.2) {
+          e.callT = 0;
+          const dir = navStep(this.nav, e, e.pos, radio.pos, e.speed * 1.1, dt,
+                              this.obstacles, 0.6, BOUNDS);
+          e.fig.position.copy(e.pos);
+          if (dir) e.facing = Math.atan2(dir.x, dir.z);
+        } else {
+          e.callT += dt;                       // shouting into the handset
+          e.facing = Math.atan2(radio.pos.x - e.pos.x, radio.pos.z - e.pos.z);
+          if (e.callT > CALL_TIME) this.raiseAlarm(squad);
+        }
+        e.searching = false;
+        e.fig.rotation.y = e.facing;
+        return;
+      }
+    }
+
     if (!target) {
       e.cover = null;
       // INVESTIGATE: walk to the last clue (a muzzle flash heard, a buddy's
       // shout, the spot we saw them) — then SEARCH on the spot.
       let arrived = true;
       if (e.hasIntel && Math.hypot(e.lastKnown.x - e.pos.x, e.lastKnown.z - e.pos.z) > 2.2) {
-        const dir = navStep(this.nav, e, e.pos, e.lastKnown, ENEMY_SPEED * 0.8, dt,
+        const dir = navStep(this.nav, e, e.pos, e.lastKnown, e.speed * 0.8, dt,
                             this.obstacles, 0.6, BOUNDS);
         e.fig.position.copy(e.pos);
         if (dir) {
@@ -379,7 +442,7 @@ export class Enemies {
     if (goal) {
       this._g.subVectors(goal, e.pos); this._g.y = 0;
       if (this._g.length() > 0.5) {
-        navStep(this.nav, e, e.pos, goal, ENEMY_SPEED, dt, this.obstacles, 0.6, BOUNDS);
+        navStep(this.nav, e, e.pos, goal, e.speed, dt, this.obstacles, 0.6, BOUNDS);
         e.fig.position.copy(e.pos);
       }
     }
@@ -393,15 +456,21 @@ export class Enemies {
       // Aim where the body actually is — crouching lowers the target.
       const aimY = target.crouched ? 0.75 : TORSO_Y;
       const aim = new THREE.Vector3(target.position.x, aimY, target.position.z).sub(muzzle).normalize();
-      aim.x += (Math.random() - 0.5) * ENEMY_SPREAD;
-      aim.y += (Math.random() - 0.5) * ENEMY_SPREAD;
-      aim.z += (Math.random() - 0.5) * ENEMY_SPREAD;
-      bullets.fire(muzzle, aim.normalize(), 'enemy', ENEMY_DAMAGE);
-      e.fireCd = ENEMY_FIRE_INTERVAL;
+      aim.x += (Math.random() - 0.5) * e.spread;
+      aim.y += (Math.random() - 0.5) * e.spread;
+      aim.z += (Math.random() - 0.5) * e.spread;
+      bullets.fire(muzzle, aim.normalize(), 'enemy', e.damage);
+      // GUNNER: 4-round burst, then a long breath. Everyone else: steady.
+      if (e.burst) {
+        e.burstLeft--;
+        e.fireCd = e.burstLeft > 0 ? e.fireInterval : (e.burstLeft = e.burst, e.burstPause);
+      } else {
+        e.fireCd = e.fireInterval;
+      }
       this.combatStarted = true;
     }
 
-    if (dist < TOUCH_RANGE) target.takeDamage(TOUCH_DPS * dt);
+    if (dist < TOUCH_RANGE) target.takeDamage(TOUCH_DPS * dt, e.pos);
   }
 
   _nearestSoldier(squad, from) {
