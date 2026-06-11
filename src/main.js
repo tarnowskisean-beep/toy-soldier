@@ -12,6 +12,7 @@ import { buildSquadHUD, updateSquadHUD } from './hud.js';
 import { MISSIONS, missionById } from './missions.js';
 import { MissionRunner } from './mission.js';
 import { hasLineOfSight } from './physics.js';
+import { sfx } from './audio.js';
 
 // --- Renderer + camera ---
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -19,6 +20,10 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Filmic color: the single biggest "engine demo → game" rendering switch.
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.3;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -32,6 +37,10 @@ const bullets = new Bullets(scene, obstacles);
 const enemies = new Enemies(scene, obstacles, coverPoints);
 const grenades = new Grenades(scene, obstacles);
 buildSquadHUD(squad);
+bullets.onFire = (origin, team) => {
+  const d = origin.distanceTo(squad.active.position);
+  sfx.gunshot(team === 'player' ? Math.min(d, 4) : d);
+};
 window.game = { scene, camera, squad, bullets, enemies, grenades, input };
 
 // --- Campaign state machine ---
@@ -90,6 +99,17 @@ function showBriefing(def) {
 
 function startPlaying() {
   hideAllScreens();
+  sfx.resume();   // user gesture: safe to start the audio engine
+  // Mission title card, Sarge's-Heroes style.
+  const card = $('titlecard');
+  if (card) {
+    $('cardCampaign').textContent = 'THE LONG WAY HOME';
+    $('cardMission').textContent = `Mission ${MISSIONS.findIndex(m => m.id === currentDef.id) + 1} — ${currentDef.name}`;
+    card.classList.remove('hidden');
+    card.classList.remove('fade');
+    setTimeout(() => card.classList.add('fade'), 3200);
+    setTimeout(() => card.classList.add('hidden'), 4600);
+  }
   mission = new MissionRunner(currentDef, scene, exit);
   mission.begin(enemies);
   objectiveEl.classList.remove('hidden');
@@ -99,6 +119,7 @@ function startPlaying() {
 
 function onWin() {
   state = 'won';
+  sfx.sting(true);
   if (document.pointerLockElement) document.exitPointerLock();
   const idx = MISSIONS.findIndex((m) => m.id === currentDef.id);
   const isLast = idx >= MISSIONS.length - 1;
@@ -110,6 +131,7 @@ function onWin() {
 
 function onLose() {
   state = 'lost';
+  sfx.sting(false);
   if (document.pointerLockElement) document.exitPointerLock();
   loseEl.classList.remove('hidden');
 }
@@ -169,6 +191,9 @@ function getAim() {
 
 let camFov = 70;
 let mapMode = false;
+let stepAccum = 0;        // footstep cadence
+let lastKills = 0;
+let lastPos = new THREE.Vector3();
 const clock = new THREE.Clock();
 
 // Muzzle flash: one pooled light, repositioned to the active soldier's muzzle
@@ -225,6 +250,13 @@ function tick(dt) {
     updateSquadHUD(squad, enemies.kills);
     updateAbilityHUD();
     crosshair.classList.toggle('hit', enemies.hitFlash > 0);
+
+    // Footsteps from actual ground covered; a kill gets its plastic THOCK.
+    stepAccum += squad.active.position.distanceTo(lastPos);
+    lastPos.copy(squad.active.position);
+    const stride = squad.active.crouched ? 1.15 : 1.7;
+    if (stepAccum > stride) { stepAccum = 0; sfx.footstep(); }
+    if (enemies.kills > lastKills) { sfx.kill(); lastKills = enemies.kills; }
     exitGlow.material.opacity = 0.25 + 0.15 * Math.sin(performance.now() * 0.004);
     vignette.classList.toggle('show', squad.active.alive && squad.active.health < 35);
 

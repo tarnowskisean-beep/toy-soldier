@@ -32,6 +32,13 @@
       #crosshair::after  { top: 8px; left: 0; height: 2px; width: 18px; }
       #crosshair.enemy::before, #crosshair.enemy::after { background: #ff3b30; }
       #crosshair.hit { transform: translate(-50%, -50%) scale(1.45); }
+      #titlecard { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
+        text-align: center; pointer-events: none; transition: opacity 1.4s ease; opacity: 1; }
+      #titlecard.fade { opacity: 0; }
+      #cardCampaign { font-size: 15px; letter-spacing: 0.55em; color: #9fd89f; opacity: 0.85;
+        text-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+      #cardMission { font-size: 42px; font-weight: bold; letter-spacing: 0.12em; color: #f1ffe9;
+        text-shadow: 0 3px 14px rgba(0,0,0,0.9); margin-top: 8px; }
       #crosshair.hit::before, #crosshair.hit::after { background: #ff5a30; }
 
       #squad { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -106,6 +113,10 @@
       <div id="stats">TANGOS DOWN <span id="kills">0</span></div>
       <div id="objective" class="hidden"></div>
       <div id="crosshair"></div>
+      <div id="titlecard" class="hidden">
+        <div id="cardCampaign">THE LONG WAY HOME</div>
+        <div id="cardMission">Mission 1 — CRASH SITE</div>
+      </div>
       <div id="ability"></div>
       <div id="squad"></div>
 

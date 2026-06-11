@@ -11,20 +11,110 @@ import * as THREE from 'three';
 // Walkable interior (just inside the outer walls).
 export const BOUNDS = { minX: -6.5, maxX: 153.5, minZ: -45, maxZ: 45 };
 
+// Canvas-painted textures: no asset files, real surfaces. Each painter draws one
+// tile; RepeatWrapping turns it into a floor's worth of material.
+function canvasTex(size, draw, repX = 1, repY = 1) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repX, repY);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+function woodTexture() {
+  return canvasTex(512, (g, S) => {
+    g.fillStyle = '#7a5028'; g.fillRect(0, 0, S, S);
+    const rows = 6;
+    for (let r = 0; r < rows; r++) {
+      const y = (r / rows) * S, h = S / rows;
+      const tone = 18 - Math.abs(((r * 73) % 37) - 18);
+      g.fillStyle = `rgb(${112 + tone},${74 + tone * 0.7},${38 + tone * 0.4})`;
+      g.fillRect(0, y, S, h);
+      // grain
+      g.strokeStyle = 'rgba(60,35,12,0.25)'; g.lineWidth = 1.5;
+      for (let i = 0; i < 7; i++) {
+        g.beginPath();
+        const gy = y + (i + 0.5) * (h / 7) + Math.sin(r * 5 + i) * 2;
+        g.moveTo(0, gy);
+        for (let x = 0; x <= S; x += 32) g.lineTo(x, gy + Math.sin((x * 0.02) + r * 9 + i * 3) * 2.5);
+        g.stroke();
+      }
+      // plank seam + butt joints
+      g.fillStyle = 'rgba(35,18,5,0.85)'; g.fillRect(0, y, S, 3);
+      const bx = ((r * 197) % S);
+      g.fillRect(bx, y, 3, h);
+    }
+  }, 12, 8);
+}
+
+function rugTexture() {
+  return canvasTex(512, (g, S) => {
+    const cx = S / 2, cy = S / 2;
+    g.fillStyle = '#6e1c18'; g.fillRect(0, 0, S, S);
+    const ringspec = [
+      [S * 0.485, '#caa24a', S * 0.02], [S * 0.44, '#2a2f55', S * 0.012],
+      [S * 0.30, '#caa24a', S * 0.014], [S * 0.20, '#d8cfae', S * 0.01],
+      [S * 0.09, '#2a2f55', S * 0.05],
+    ];
+    for (const [r, col, w] of ringspec) {
+      g.strokeStyle = col; g.lineWidth = w;
+      g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+    }
+    // weave noise
+    for (let i = 0; i < 4000; i++) {
+      const x = Math.random() * S, y = Math.random() * S;
+      g.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`;
+      g.fillRect(x, y, 2, 1);
+    }
+  });
+}
+
+function wallTexture() {
+  return canvasTex(256, (g, S) => {
+    g.fillStyle = '#cfc5ae'; g.fillRect(0, 0, S, S);
+    g.fillStyle = 'rgba(176,164,138,0.5)';
+    for (let x = 0; x < S; x += 32) g.fillRect(x, 0, 14, S);   // wallpaper stripes
+    for (let i = 0; i < 600; i++) {
+      g.fillStyle = `rgba(110,100,80,${Math.random() * 0.05})`;
+      g.fillRect(Math.random() * S, Math.random() * S, 2, 2);
+    }
+  }, 10, 1.4);
+}
+
+function fabricTexture(base) {
+  return canvasTex(128, (g, S) => {
+    g.fillStyle = base; g.fillRect(0, 0, S, S);
+    for (let y = 0; y < S; y += 3) {
+      g.fillStyle = `rgba(255,255,255,${y % 6 ? 0.03 : 0.05})`;
+      g.fillRect(0, y, S, 1);
+    }
+    for (let x = 0; x < S; x += 3) {
+      g.fillStyle = 'rgba(0,0,0,0.045)';
+      g.fillRect(x, 0, 1, S);
+    }
+  }, 5, 5);
+}
+
 export function createWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x232c40);            // dusk through the windows
   scene.fog = new THREE.Fog(0x232c40, 130, 340);
 
-  // --- Lighting: warm indoor key + soft fill ---
-  scene.add(new THREE.AmbientLight(0xfff2e0, 0.52));
-  const sun = new THREE.DirectionalLight(0xffe8c8, 1.05);
-  sun.position.set(50, 70, 25);
+  // --- Lighting: a SUNSET pouring through the west window + sky bounce + lamps.
+  // Layered warm/cool light is what separates a lit set from a flat tech demo.
+  scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 0.95));
+  const sun = new THREE.DirectionalLight(0xffb469, 1.6);
+  sun.position.set(-60, 46, 18);            // low in the west — long warm shadows
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -30; sun.shadow.camera.right = 110;
+  sun.shadow.camera.left = -30; sun.shadow.camera.right = 170;
   sun.shadow.camera.top = 60;   sun.shadow.camera.bottom = -60;
-  sun.shadow.camera.far = 250;
+  sun.shadow.camera.far = 320;
+  sun.shadow.bias = -0.0004;
   scene.add(sun);
 
   const obstacles = [];
@@ -59,7 +149,7 @@ export function createWorld() {
   // --- Floors ---
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(165, 95),
-    new THREE.MeshStandardMaterial({ color: 0x7d5230, roughness: 0.9 })   // hardwood
+    new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.62 })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(73.5, 0, 0);
@@ -68,18 +158,12 @@ export function createWorld() {
 
   // The area rug — the living room's centerpiece battlefield.
   const rug = new THREE.Mesh(
-    new THREE.CircleGeometry(11, 40),
-    new THREE.MeshStandardMaterial({ color: 0x6e1c18, roughness: 1 })
+    new THREE.CircleGeometry(11, 48),
+    new THREE.MeshStandardMaterial({ map: rugTexture(), roughness: 0.95 })
   );
   rug.rotation.x = -Math.PI / 2; rug.position.set(28, 0.02, 0); rug.scale.x = 1.4;
   rug.receiveShadow = true;
   scene.add(rug);
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(6.5, 7.4, 40),
-    new THREE.MeshStandardMaterial({ color: 0xb9912f, roughness: 1 })
-  );
-  ring.rotation.x = -Math.PI / 2; ring.position.set(28, 0.03, 0); ring.scale.x = 1.4;
-  scene.add(ring);
 
   // Kitchen tile patch.
   const tile = new THREE.Mesh(
@@ -91,8 +175,21 @@ export function createWorld() {
   scene.add(tile);
 
   // --- Walls (height 12). The floor plan. ---
-  const WALL = 0xcdc4b2;
-  const wall = (w, d, x, z) => box(w, 12, d, x, z, WALL, { cover: false, rough: 0.95 });
+  const wallMat = new THREE.MeshStandardMaterial({ map: wallTexture(), roughness: 0.92 });
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d2, roughness: 0.6 });
+  const wall = (w, d, x, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 12, d), wallMat);
+    m.position.set(x, 6, z);
+    m.castShadow = true; m.receiveShadow = true;
+    scene.add(m);
+    obstacles.push(new THREE.Box3(
+      new THREE.Vector3(x - w / 2, 0, z - d / 2), new THREE.Vector3(x + w / 2, 12, z + d / 2)));
+    // Baseboard: the little white strip that makes a box read as a ROOM.
+    const b = new THREE.Mesh(new THREE.BoxGeometry(w + 0.16, 0.8, d + 0.16), baseMat);
+    b.position.set(x, 0.4, z);
+    b.receiveShadow = true;
+    scene.add(b);
+  };
   wall(1, 92, -7.5, 0);                       // west (behind the crash)
   wall(163, 1, 73.5, -46);                    // south
   wall(89.5, 1, 35.75, 46);                   // north, west of the front door (x ≤ 80.5)
@@ -124,11 +221,17 @@ export function createWorld() {
   box(1.3, 1.3, 1.3, 1.5, 7.5, 0x7a4a22, { cover: true });            // salvaged crate
 
   // --- LIVING ROOM furniture ---
-  // Couch along the south wall.
-  box(30, 4.5, 8, 26, -41.5, 0x3e4a5c);
-  box(30, 10, 2.2, 26, -44.6, 0x3e4a5c);
-  box(2.8, 7.2, 9, 10.9, -41.5, 0x3e4a5c);
-  box(2.8, 7.2, 9, 41.1, -41.5, 0x3e4a5c);
+  // Couch along the south wall — woven upholstery.
+  const couchMat = new THREE.MeshStandardMaterial({ map: fabricTexture('#3e4a5c'), roughness: 0.95 });
+  const couchPart = (w, h, d, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), couchMat);
+    m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; scene.add(m);
+    obstacles.push(new THREE.Box3(new THREE.Vector3(x - w/2, 0, z - d/2), new THREE.Vector3(x + w/2, y + h/2, z + d/2)));
+  };
+  couchPart(30, 4.5, 8, 26, 2.25, -41.5);
+  couchPart(30, 10, 2.2, 26, 5, -44.6);
+  couchPart(2.8, 7.2, 9, 10.9, 3.6, -41.5);
+  couchPart(2.8, 7.2, 9, 41.1, 3.6, -41.5);
   // Coffee table over the rug: floating top (walk under it!), legs are cover.
   box(15, 0.8, 10.5, 28, 3, 0x2b1709, { y: 6.2, obstacle: false });
   for (const [lx, lz] of [[21.8, -1.3], [34.2, -1.3], [21.8, 7.3], [34.2, 7.3]])
@@ -186,6 +289,47 @@ export function createWorld() {
   box(2.8, 0.42, 2, 118, 15, 0x6e1c18, { obstacle: false });
   box(1.6, 1.6, 1.6, 136, 12, 0x9a7612, { cover: true, rough: 0.35 });
   box(1.3, 1.3, 1.3, 103, 26, 0x9a1812, { cover: true, rough: 0.35 });
+
+  // --- SET DRESSING: the room has to feel LIVED IN ---
+  // Floor lamp by the couch: pole, shade, and a warm pool of light.
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.4, 0.4, 16),
+    new THREE.MeshStandardMaterial({ color: 0x3a2c1c, roughness: 0.5 }));
+  lampBase.position.set(50, 0.2, -36); lampBase.castShadow = true; scene.add(lampBase);
+  const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0x3a2c1c, roughness: 0.5 }));
+  lampPole.position.set(50, 6.2, -36); lampPole.castShadow = true; scene.add(lampPole);
+  const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.6, 3.2, 16, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0xf2dcae, roughness: 0.9, emissive: 0xffd9a0, emissiveIntensity: 0.55, side: THREE.DoubleSide }));
+  lampShade.position.set(50, 12.2, -36); scene.add(lampShade);
+  const lampLight = new THREE.PointLight(0xffc88a, 90, 46, 1.8);
+  lampLight.position.set(50, 11, -36); scene.add(lampLight);
+  obstacles.push(new THREE.Box3(new THREE.Vector3(48.9, 0, -37.1), new THREE.Vector3(51.1, 12, -34.9)));
+
+  // A second lamp glow in the study so the far rooms aren't pitch black.
+  const studyLight = new THREE.PointLight(0xffc88a, 36, 32, 1.8);
+  studyLight.position.set(126, 9, 30); scene.add(studyLight);
+  const kitchenLight = new THREE.PointLight(0xcfe0ff, 26, 30, 1.8);
+  kitchenLight.position.set(122, 9, -24); scene.add(kitchenLight);
+
+  // The WEST WINDOW the sunset pours through (the crash came through here too).
+  const paneMat = new THREE.MeshBasicMaterial({ color: 0xffb469 });
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(11, 7), paneMat);
+  pane.position.set(-6.9, 7, -9); pane.rotation.y = Math.PI / 2; scene.add(pane);
+  for (const [w, h, y, z] of [[12, 0.7, 3.4, -9], [12, 0.7, 10.6, -9], [0.7, 8, 7, -14.6], [0.7, 8, 7, -3.4], [0.7, 8, 7, -9]]) {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, w === 0.7 ? 0.7 : w),
+      new THREE.MeshStandardMaterial({ color: 0x4a382c, roughness: 0.6 }));
+    f.position.set(-6.8, y, z); scene.add(f);
+  }
+
+  // Picture frames on the south wall.
+  for (const [x, art] of [[14, 0x35508a], [36, 0x8a6435], [58, 0x4a7a4a]]) {
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(5.4, 4.2, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x2b1a0c, roughness: 0.5 }));
+    fr.position.set(x, 7.4, -45.3); scene.add(fr);
+    const cv = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 3.2),
+      new THREE.MeshStandardMaterial({ color: art, roughness: 0.9 }));
+    cv.position.set(x, 7.4, -45.1); scene.add(cv);
+  }
 
   // --- THE FRONT DOOR: glowing breach zone in the doorway ---
   const exit = { x: 84.5, z: 42.5, r: 4.5 };

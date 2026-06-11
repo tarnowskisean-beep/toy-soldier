@@ -177,6 +177,7 @@ export class Enemies {
           const bd = b.dir || this._v.set(0, 0, 0);
           moveBy(e.pos, bd.x * 0.5, bd.z * 0.5, this.obstacles, 0.6, BOUNDS);
           e.fig.position.copy(e.pos);
+          bullets.burst(b.mesh.position);   // sparks on flesh... plastic
           bullets.retireBullet(b);
           break;
         }
