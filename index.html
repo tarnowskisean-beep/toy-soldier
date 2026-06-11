@@ -31,6 +31,8 @@
       #crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
       #crosshair::after  { top: 8px; left: 0; height: 2px; width: 18px; }
       #crosshair.enemy::before, #crosshair.enemy::after { background: #ff3b30; }
+      #crosshair.hit { transform: translate(-50%, -50%) scale(1.45); }
+      #crosshair.hit::before, #crosshair.hit::after { background: #ff5a30; }
 
       #squad { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
         display: flex; gap: 10px; }
@@ -96,7 +98,7 @@
 
       .hidden { display: none !important; }
     </style>
-    <script type="module" crossorigin src="./assets/index-Duarodlj.js"></script>
+    <script type="module" crossorigin src="./assets/index-CG8cV1zN.js"></script>
   </head>
   <body>
     <div id="scope"></div>
@@ -110,7 +112,7 @@
 
       <!-- Mission select -->
       <div id="menu" class="screen">
-        <h1>TOY SOLDIER</h1>
+        <h1>THE LONG WAY HOME</h1>
         <h2>OPERATION PLASTIC STORM</h2>
         <div id="missionList"></div>
         <div class="row" style="margin-top:10px; opacity:0.7;">Select a mission to deploy</div>
@@ -121,9 +123,9 @@
         <h1 id="briefName">MISSION</h1>
         <h2 id="briefSector">SECTOR</h2>
         <div class="row" id="briefText" style="margin-bottom:14px;"></div>
-        <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>CLICK</b> fire • <b>SHIFT</b> sprint</div>
+        <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>CLICK</b> fire • <b>SHIFT</b> sprint • <b>C</b> crouch (sneak)</div>
         <div class="row"><b>1–4 / TAB</b> switch soldier • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold</div>
-        <div class="row"><b>RMB</b> scope/suppress • <b>SPACE</b> grenade/revive <i>(by class)</i></div>
+        <div class="row"><b>RMB</b> scope/suppress • <b>SPACE</b> grenade/revive <i>(by class)</i> • <b>M</b> tactical map</div>
         <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>
       </div>
 
