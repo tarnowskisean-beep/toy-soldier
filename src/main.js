@@ -68,7 +68,7 @@ const $ = (id) => document.getElementById(id);
 const menuEl = $('menu'), startEl = $('start'), winEl = $('win'), loseEl = $('gameover');
 const objectiveEl = $('objective'), crosshair = $('crosshair');
 const vignette = $('vignette'), abilityEl = $('ability'), scopeEl = $('scope');
-const dmgdirEl = $('dmgdir'), takedownEl = $('takedown');
+const dmgdirEl = $('dmgdir'), takedownEl = $('takedown'), peekEl = $('peek');
 const ammoTopEl = $('ammoTop'), healthfillEl = $('healthfill');
 const portraitCv = $('portraitCv'), weaponCv = $('weaponCv'), portraitNameEl = $('portraitName');
 
@@ -402,9 +402,13 @@ function placeCamera(dt = 0) {
   // Aiming pulls the camera in over the RIGHT SHOULDER: closer, lower, and
   // offset so you see your soldier shoulder the rifle along the sightline.
   aimT += ((a.aiming ? 1 : 0) - aimT) * Math.min(1, dt * 9);
-  const boomLen = CAM_DISTANCE + (3.4 - CAM_DISTANCE) * aimT;
-  const side = 1.05 * aimT;                       // right-shoulder offset
-  const rx = Math.cos(a.yaw), rz = -Math.sin(a.yaw);
+  const boomLen = CAM_DISTANCE + (3.1 - CAM_DISTANCE) * aimT;
+  const side = 1.65 * aimT;                       // over the RIGHT shoulder:
+                                                  // the soldier sits LEFT of
+                                                  // frame, crosshair clears him
+  // (Screen-right is world MINUS the facing-right vector for this camera —
+  // shift the view axis toward his LEFT so HE ends up left of frame.)
+  const rx = -Math.cos(a.yaw), rz = Math.sin(a.yaw);
 
   const ty = a.position.y + (CAM_HEIGHT + (2.05 - CAM_HEIGHT) * aimT) * (a.crouched ? 0.7 : 1);
   const tx = a.position.x + rx * side, tz = a.position.z + rz * side;
@@ -475,6 +479,9 @@ function handleTakedown() {
     enemies.takedown(cand, squad.active.position);
     sfx.takedown();
   }
+  // Tucked behind low cover: remind the player the wall works both ways.
+  const a = squad.active;
+  peekEl.classList.toggle('show', a.alive && a.coverNear && !a.aiming && !cand);
 }
 
 function handleAbility(aim) {

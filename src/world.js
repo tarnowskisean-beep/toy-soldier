@@ -277,12 +277,12 @@ function buildHouse() {
   for (let b = 0; b < 5; b++)
     box(0.5, 3, 1.7, 72.5, -6 + b * 3, b % 2 ? 0x1c5a2a : 0x6e1c18, { cover: true });
   // Abandoned mid-field position.
-  box(3.4, 0.85, 0.9, 44.5, -1.5, 0x8a7a4a, { cover: true });
+  box(3.4, 1.05, 0.9, 44.5, -1.5, 0x8a7a4a, { cover: true });
   box(1.35, 1.35, 1.35, 43.5, 3.5, 0x7a4a22, { cover: true });
   // Tan emplacements before the hall door.
-  box(0.9, 0.85, 3.4, 62.5, -13, 0x8a7a4a, { cover: true });
-  box(0.9, 0.85, 3.4, 63, 0, 0x8a7a4a, { cover: true });
-  box(0.9, 0.85, 3.4, 62.5, 13, 0x8a7a4a, { cover: true });
+  box(0.9, 1.05, 3.4, 62.5, -13, 0x8a7a4a, { cover: true });
+  box(0.9, 1.05, 3.4, 63, 0, 0x8a7a4a, { cover: true });
+  box(0.9, 1.05, 3.4, 62.5, 13, 0x8a7a4a, { cover: true });
   box(1.35, 1.4, 1.35, 65, -6.5, 0x7a4a22, { cover: true });
   box(1.35, 1.4, 1.35, 65.2, 7, 0x7a4a22, { cover: true });
 
@@ -372,7 +372,7 @@ function buildHouse() {
   // The garrison's foyer emplacements (and the player's approach cover).
   box(1.4, 1.4, 1.4, 79, 37, 0x9a1812, { cover: true, rough: 0.35 });
   box(1.4, 1.4, 1.4, 90, 37, 0x1a3a9a, { cover: true, rough: 0.35 });
-  box(3.2, 0.85, 0.9, 84.5, 37.5, 0x8a7a4a, { cover: true });
+  box(3.2, 1.05, 0.9, 84.5, 37.5, 0x8a7a4a, { cover: true });
 
   // --- MISSION PROPS ---
   // Supply drops: the plane's cargo, scattered across the house. A green

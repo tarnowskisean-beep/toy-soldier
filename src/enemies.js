@@ -45,8 +45,9 @@ const FIGHT_SIGHT = 43;        // an ALERTED man looks all around, a bit farther
 const HEAR_RANGE = 21;         // gunfire within this wakes a sentry
 const BLAST_HEAR = 33;         // a grenade is the loudest thing in the house
 const SHOUT_RANGE = 11;        // an alerted soldier wakes friends within this
-const AWARE_RATE = 1.1;        // seconds^-1 of suspicion while you're visible
+const AWARE_RATE = 2.4;        // seconds^-1 of suspicion while you're visible
 const AWARE_DECAY = 0.5;
+const SPOT_INSTANT = 10;       // standing in plain sight inside this = made NOW
 const PATROL_SPEED = 3.0;
 const SEARCH_TIME = 4;         // how long they hunt before standing down
 
@@ -347,7 +348,8 @@ export class Enemies {
     }
 
     // Watch the arc: nearest visible squad member in the cone. Sight checks
-    // run at real heights — a crouched man can hide behind knee-high cover.
+    // run at real heights — a crouched man can hide behind knee-high cover
+    // (but POPPING OUT over it counts as standing).
     let seen = null, seenD = SIGHT_RANGE;
     const fx = Math.sin(e.facing), fz = Math.cos(e.facing);
     for (const m of squad.members) {
@@ -356,13 +358,21 @@ export class Enemies {
       const d = Math.hypot(dx, dz);
       if (d >= seenD) continue;
       if ((fx * dx + fz * dz) / (d || 1) < SIGHT_CONE) continue;
-      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5, m.crouched ? 0.8 : 1.25)) continue;
+      const hidden = m.crouched && !m.peeking;
+      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5, hidden ? 0.8 : 1.25)) continue;
       seen = m; seenD = d;
     }
     if (seen) {
-      let rate = AWARE_RATE * (1.2 - seenD / SIGHT_RANGE);   // closer = faster
-      if (seen.crouched) rate *= 0.5;                        // sneaking works
+      // Suspicion climbs QUADRATICALLY with proximity — being seen across the
+      // room buys you a beat; being seen at conversation distance does not.
+      const sneaking = seen.crouched && !seen.peeking;
+      const prox = 1 - seenD / SIGHT_RANGE;
+      let rate = AWARE_RATE * (0.15 + 1.7 * prox * prox);
+      if (sneaking) rate *= 0.5;                             // sneaking works
       if (seen.sprinting) rate *= 1.8;                       // sprinting is LOUD
+      // If he can see you like you can see him, he's ALERT — no grace period
+      // for standing in a sentry's face.
+      if (seenD < SPOT_INSTANT && !sneaking) rate = Math.max(rate, 4.5);
       e.aware += dt * Math.max(0.15, rate);
       if (e.aware >= 1) this.alert(e, seen.position);
     } else {
@@ -383,7 +393,8 @@ export class Enemies {
       if (!m.alive) continue;
       const d = e.pos.distanceTo(m.position);
       if (d >= tDist) continue;
-      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5, m.crouched ? 0.75 : 1.1)) continue;
+      const hidden = m.crouched && !m.peeking;
+      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5, hidden ? 0.75 : 1.1)) continue;
       target = m; tDist = d;
     }
 
@@ -484,8 +495,9 @@ export class Enemies {
     e.fireCd -= dt;
     if (dist < ENEMY_RANGE * 0.9 && e.fireCd <= 0 && e.suppressed <= 0 && e.stagger <= 0) {
       const muzzle = e.fig.localToWorld(e.fig.userData.muzzleOffset.clone());
-      // Aim where the body actually is — crouching lowers the target.
-      const aimY = target.crouched ? 0.75 : TORSO_Y;
+      // Aim where the body actually is — crouching lowers the target,
+      // popping out over cover raises it again.
+      const aimY = (target.crouched && !target.peeking) ? 0.75 : TORSO_Y;
       const aim = new THREE.Vector3(target.position.x, aimY, target.position.z).sub(muzzle).normalize();
       aim.x += (Math.random() - 0.5) * e.spread;
       aim.y += (Math.random() - 0.5) * e.spread;

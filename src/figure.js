@@ -123,6 +123,7 @@ export function createFigure(color, opts = {}) {
   group.userData.muzzleOffset = new THREE.Vector3(
     0.16 * bw, 1.52, 0.12 + 0.53 + rifleLength * 0.8);
   group.userData.rifle = armsRifle;
+  group.userData.rifleHomeY = armsRifle.position.y;
   group.userData.fadeMats = fadeMats;
 
   return group;

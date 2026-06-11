@@ -106,6 +106,11 @@
         border-radius: 5px; background: rgba(10, 24, 10, 0.78); border: 2px solid rgba(150,255,150,0.55);
         color: #c9ffc9; opacity: 0; transition: opacity 0.12s; }
       #takedown.show { opacity: 1; }
+      #peek { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%);
+        font-size: 13px; font-weight: bold; letter-spacing: 2px; padding: 4px 12px;
+        border-radius: 5px; background: rgba(10, 24, 10, 0.72); border: 2px solid rgba(150,220,255,0.5);
+        color: #cfeaff; opacity: 0; transition: opacity 0.12s; }
+      #peek.show { opacity: 1; }
 
       #toast { position: absolute; top: 58px; left: 50%; transform: translateX(-50%) translateY(-8px);
         font-size: 14px; font-weight: bold; letter-spacing: 2px; padding: 6px 16px;
@@ -188,6 +193,7 @@
       <div id="crosshair"></div>
       <div id="dmgdir"></div>
       <div id="takedown">E&nbsp;&nbsp;SILENT TAKEDOWN</div>
+      <div id="peek">RMB&nbsp;&nbsp;POP OUT</div>
       <div id="titlecard" class="hidden">
         <div id="cardCampaign">THE LONG WAY HOME</div>
         <div id="cardMission">Mission 1 — CRASH SITE</div>
@@ -210,6 +216,7 @@
         <div class="row" id="briefText" style="margin-bottom:14px;"></div>
         <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>RMB</b> aim • <b>CLICK</b> fire • <b>R</b> reload</div>
         <div class="row"><b>SHIFT</b> sprint • <b>C</b> crouch (sneak) • <b>E</b> silent takedown <i>(from behind)</i></div>
+        <div class="row"><b>C + RMB</b> at low cover: pop out, fire, release to drop back down</div>
         <div class="row"><b>1–4 / TAB</b> switch soldier • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold • <b>M</b> map</div>
         <div class="row"><b>SPACE</b> grenade / revive / dig in <i>(by class)</i></div>
         <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>

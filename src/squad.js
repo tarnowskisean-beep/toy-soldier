@@ -182,8 +182,9 @@ export class Squad {
       for (const m of this.members) {
         if (!m.alive) continue;
         const dx = b.mesh.position.x - m.position.x;
-        // Torso height — crouching genuinely lowers you under chest-high fire.
-        const dy = b.mesh.position.y - (m.position.y + (m.crouched ? 0.75 : 1.1));
+        // Torso height — crouching genuinely lowers you under chest-high fire;
+        // popping out over cover exposes you again.
+        const dy = b.mesh.position.y - (m.position.y + (m.crouched && !m.peeking ? 0.75 : 1.1));
         const dz = b.mesh.position.z - m.position.z;
         if (dx * dx + dy * dy + dz * dz < 0.9 * 0.9) {
           // The tracer points back at the shooter — good enough for the

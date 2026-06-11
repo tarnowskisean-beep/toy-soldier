@@ -61,6 +61,8 @@ export class Soldier {
     this.zoomed = false;     // Sniper: aiming = scoped
     this.aiming = false;     // RMB held: shoulder the rifle — steady, slow, zoomed
     this.crouched = false;   // C toggles: slower, tighter aim, harder to spot
+    this.peeking = false;    // crouched behind low cover + aiming = popped out
+    this.coverNear = false;  // low cover within reach ahead (drives the hint)
     this.sprinting = false;  // Shift held: fast, loud, easy to spot, wild aim
 
     // AI state
@@ -123,18 +125,22 @@ export class Soldier {
     if (ctx.isActive) this._controlPlayer(ctx.input, dt);
     else              this._controlAI(dt, ctx);
 
-    // Sync the visible figure to our logical position/facing. Crouching squashes
-    // the toy down (and reads as "harder to see" at a glance).
+    // Sync the visible figure to our logical position/facing. Crouching
+    // squashes the toy down; POPPING OUT over cover rises most of the way
+    // back up — enough for the muzzle to clear a sandbag.
     this.figure.position.copy(this.position);
     this.figure.rotation.y = this.yaw;
-    const targetSquash = this.crouched ? 0.66 : 1;
+    const targetSquash = this.crouched ? (this.peeking ? 0.9 : 0.66) : 1;
     this.figure.scale.y += (targetSquash - this.figure.scale.y) * Math.min(1, dt * 14);
-    // Shouldering the rifle: swing it from across-the-chest to pointing
-    // down the sightline.
+    // Shouldering the rifle: swing it from across-the-chest onto the
+    // sightline AND raise it to the cheek — aimed down the sights, visibly.
     const rifle = this.figure.userData.rifle;
     if (rifle) {
-      const targetRy = this.aiming ? 0.02 : -0.14;
-      rifle.rotation.y += (targetRy - rifle.rotation.y) * Math.min(1, dt * 10);
+      const k = Math.min(1, dt * 10);
+      const homeY = this.figure.userData.rifleHomeY;
+      rifle.rotation.y += ((this.aiming ? 0.02 : -0.14) - rifle.rotation.y) * k;
+      rifle.position.y += ((this.aiming ? homeY + 0.16 : homeY) - rifle.position.y) * k;
+      rifle.rotation.x += ((this.aiming ? -0.06 : 0) - rifle.rotation.x) * k;
     }
 
     // Drive the walk cycle from actual ground covered.
@@ -145,8 +151,23 @@ export class Soldier {
     this.figure.userData.animate(this._walkPhase, this._animAmp);
   }
 
+  // Is there knee-high cover within arm's reach of where I'm facing? That's
+  // what you can pop out over.
+  _lowCoverAhead() {
+    const px = this.position.x + Math.sin(this.yaw) * 1.4;
+    const pz = this.position.z + Math.cos(this.yaw) * 1.4;
+    for (const b of this.obstacles) {
+      if (b.max.y < 0.7 || b.max.y > 1.5) continue;
+      if (px > b.min.x - 0.5 && px < b.max.x + 0.5 &&
+          pz > b.min.z - 0.5 && pz < b.max.z + 0.5) return true;
+    }
+    return false;
+  }
+
   // ---------- PLAYER control ----------
   _controlPlayer(input, dt) {
+    this.coverNear = this.crouched && this._lowCoverAhead();
+    this.peeking = this.coverNear && this.aiming;
     // Sights slow the mouse for fine aim (the scope, even more).
     const sens = MOUSE_SENS * (this.zoomed ? 0.4 : this.aiming ? 0.65 : 1);
     this.yaw -= input.mouseDX * sens;
@@ -199,6 +220,8 @@ export class Soldier {
 
   // ---------- AI control ----------
   _controlAI(dt, ctx) {
+    this.peeking = false;
+    this.coverNear = false;
     // Who should we shoot? An explicit ATTACK target if it's still alive,
     // otherwise the nearest enemy within our effective range.
     let engage = (this.order === ORDER.ATTACK && this._targetAlive())
