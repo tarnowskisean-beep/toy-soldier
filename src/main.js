@@ -393,7 +393,9 @@ window.game.step = (frames = 1, dt = 1 / 60) => { for (let i = 0; i < frames; i+
 const cameraBlockers = obstacles.filter((b) =>
   b.max.y >= 3.5 && (b.max.x - b.min.x) * (b.max.z - b.min.z) >= 5);
 let camDist = CAM_DISTANCE;
-let aimT = 0;   // 0 = chase camera, 1 = over-the-shoulder aim camera
+let aimT = 0;            // 0 = chase camera, 1 = over-the-shoulder aim camera
+let shoulderSign = 1;    // which shoulder the aim camera rides
+let shoulderSmooth = 1;  // eased version, so swaps swing instead of snapping
 
 function placeCamera(dt = 0) {
   // The reveal fog is for eyes at soldier height — the tactical map reads
@@ -423,21 +425,39 @@ function placeCamera(dt = 0) {
   for (const e of enemies.list) e.fig.visible = true;
   const a = squad.active;
 
-  // Aiming pulls the camera in over the RIGHT SHOULDER: closer, lower, and
-  // offset so you see your soldier shoulder the rifle along the sightline.
+  // Aiming pulls the camera in over a shoulder: closer, lower, and offset so
+  // you see your soldier shoulder the rifle along the sightline.
   aimT += ((a.aiming ? 1 : 0) - aimT) * Math.min(1, dt * 9);
-  const boomLen = CAM_DISTANCE + (3.1 - CAM_DISTANCE) * aimT;
-  const side = 1.65 * aimT;                       // over the RIGHT shoulder:
-                                                  // the soldier sits LEFT of
-                                                  // frame, crosshair clears him
-  // (Screen-right is world MINUS the facing-right vector for this camera —
-  // shift the view axis toward his LEFT so HE ends up left of frame.)
+  const boomLen = CAM_DISTANCE + (3.35 - CAM_DISTANCE) * aimT;
+  // (Screen-right is world MINUS the facing-right vector for this camera.)
   const rx = -Math.cos(a.yaw), rz = Math.sin(a.yaw);
-
   const ty = a.position.y + (CAM_HEIGHT + (2.05 - CAM_HEIGHT) * aimT) * (a.crouched ? 0.7 : 1);
-  const tx = a.position.x + rx * side, tz = a.position.z + rz * side;
   const cp = Math.cos(a.pitch), sp = Math.sin(a.pitch);
   const dx = -Math.sin(a.yaw) * cp, dy = sp, dz = -Math.cos(a.yaw) * cp;
+
+  // SMART SHOULDER: while aiming, test the boom over BOTH shoulders and ride
+  // whichever side has clear air — leaning around a corner with the cover on
+  // the camera's side used to bury the view in the box.
+  const leanBias = (a.peeking && a.coverBox && a.coverBox.max.y > 1.45) ? 1.3 : 1;
+  const sideMag = 1.65 * aimT * leanBias;
+  if (aimT > 0.25) {
+    const clearFor = (sign) => {
+      const cx = a.position.x + rx * sideMag * sign;
+      const cz = a.position.z + rz * sideMag * sign;
+      let c = boomLen;
+      const ex2 = cx + dx * boomLen, ey2 = ty + dy * boomLen, ez2 = cz + dz * boomLen;
+      for (const b of cameraBlockers) {
+        const t = segBoxEntryT(cx, ty, cz, ex2, ey2, ez2, b);
+        if (t < Infinity) c = Math.min(c, t * boomLen);
+      }
+      return c;
+    };
+    // Hysteresis: only swap when the other shoulder is clearly better.
+    if (clearFor(-shoulderSign) > clearFor(shoulderSign) * 1.3 + 0.4) shoulderSign = -shoulderSign;
+  }
+  shoulderSmooth += (shoulderSign - shoulderSmooth) * Math.min(1, dt * 8);
+  const tx = a.position.x + rx * sideMag * shoulderSmooth;
+  const tz = a.position.z + rz * sideMag * shoulderSmooth;
 
   // The camera is on a boom arm behind the soldier. Cast the arm against the
   // walls and pull the camera IN FRONT of the first one it would cross —
