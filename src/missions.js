@@ -10,6 +10,8 @@
 //   enemyLayout  — the occupation force (type: 'rifle' | 'scout' | 'gunner')
 //   reserve      — who comes through the front door if the alarm is raised
 
+import { WORLD_SCALE } from './world.js';
+
 export const MISSIONS = [
   {
     id: 'crash-site',
@@ -99,6 +101,24 @@ export const MISSIONS = [
     comingSoon: true,
   },
 ];
+
+// Mission coordinates are authored in the house's original design units;
+// stretch them once to match the world scale.
+for (const def of MISSIONS) {
+  if (def.scatter) for (const s of def.scatter) { s.x *= WORLD_SCALE; s.z *= WORLD_SCALE; }
+  if (def.enemyLayout) for (const e of def.enemyLayout) {
+    e.x *= WORLD_SCALE; e.z *= WORLD_SCALE;
+    if (e.patrol) { e.patrol.x *= WORLD_SCALE; e.patrol.z *= WORLD_SCALE; }
+  }
+  if (def.reserve) for (const r of def.reserve) { r.x *= WORLD_SCALE; r.z *= WORLD_SCALE; }
+  if (def.stages) for (const st of def.stages) {
+    if (!st.parts) continue;
+    for (const p of st.parts) {
+      if (p.items) for (const it of p.items) { it.x *= WORLD_SCALE; it.z *= WORLD_SCALE; }
+      if (p.at) { p.at.x *= WORLD_SCALE; p.at.z *= WORLD_SCALE; }
+    }
+  }
+}
 
 export function missionById(id) {
   return MISSIONS.find((m) => m.id === id) || null;

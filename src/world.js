@@ -9,8 +9,15 @@
 import * as THREE from 'three';
 import { NavGrid } from './navgrid.js';
 
+// World scale. The original house was authored compact; everything reads its
+// coordinates through WS so the rooms breathe: positions always stretch, BIG
+// furniture scales its body too, and knee-high gameplay props keep their true
+// size (low cover must stay knee-high for the crouch game to read).
+export const WORLD_SCALE = 1.4;
+const WS = WORLD_SCALE;
+
 // Walkable interior (just inside the outer walls).
-export const BOUNDS = { minX: -6.5, maxX: 153.5, minZ: -45, maxZ: 45 };
+export const BOUNDS = { minX: -6.5 * WS, maxX: 153.5 * WS, minZ: -45 * WS, maxZ: 45 * WS };
 
 // Canvas-painted textures: no asset files, real surfaces. Each painter draws one
 // tile; RepeatWrapping turns it into a floor's worth of material.
@@ -49,7 +56,7 @@ function woodTexture() {
       const bx = ((r * 197) % S);
       g.fillRect(bx, y, 3, h);
     }
-  }, 12, 8);
+  }, 17, 11);
 }
 
 function rugTexture() {
@@ -83,7 +90,7 @@ function wallTexture() {
       g.fillStyle = `rgba(110,100,80,${Math.random() * 0.05})`;
       g.fillRect(Math.random() * S, Math.random() * S, 2, 2);
     }
-  }, 10, 1.4);
+  }, 14, 1.4);
 }
 
 function fabricTexture(base) {
@@ -103,18 +110,18 @@ function fabricTexture(base) {
 export function createWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x232c40);            // dusk through the windows
-  scene.fog = new THREE.Fog(0x232c40, 130, 340);
+  scene.fog = new THREE.Fog(0x232c40, 180, 475);
 
   // --- Lighting: a SUNSET pouring through the west window + sky bounce + lamps.
   // Layered warm/cool light is what separates a lit set from a flat tech demo.
   scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 1.12));
   const sun = new THREE.DirectionalLight(0xffb469, 1.6);
-  sun.position.set(-60, 46, 18);            // low in the west — long warm shadows
+  sun.position.set(-84, 64, 25);            // low in the west — long warm shadows
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -30; sun.shadow.camera.right = 170;
-  sun.shadow.camera.top = 60;   sun.shadow.camera.bottom = -60;
-  sun.shadow.camera.far = 320;
+  sun.shadow.camera.left = -45; sun.shadow.camera.right = 240;
+  sun.shadow.camera.top = 85;   sun.shadow.camera.bottom = -85;
+  sun.shadow.camera.far = 460;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
 
@@ -122,7 +129,13 @@ export function createWorld() {
   const coverPoints = [];
 
   // Box helper: mesh + (optionally) an axis-aligned obstacle + cover points.
-  const box = (w, h, d, x, z, color, { y = h / 2, obstacle = true, cover = false, rough = 0.85 } = {}) => {
+  // Positions stretch by WS; the BODY scales too only for big furniture
+  // (tall, or an elevated slab like a tabletop) — small props keep true size.
+  const box = (w, h, d, x, z, color, { y, obstacle = true, cover = false, rough = 0.85 } = {}) => {
+    const big = h >= 3 || (y !== undefined && y > 3);
+    if (big) { w *= WS; h *= WS; d *= WS; }
+    x *= WS; z *= WS;
+    y = y !== undefined ? y * WS : h / 2;
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
       new THREE.MeshStandardMaterial({ color, roughness: rough })
@@ -149,29 +162,29 @@ export function createWorld() {
 
   // --- Floors ---
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(165, 95),
+    new THREE.PlaneGeometry(165 * WS, 95 * WS),
     new THREE.MeshStandardMaterial({ map: woodTexture(), roughness: 0.62 })
   );
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(73.5, 0, 0);
+  floor.position.set(73.5 * WS, 0, 0);
   floor.receiveShadow = true;
   scene.add(floor);
 
   // The area rug — the living room's centerpiece battlefield.
   const rug = new THREE.Mesh(
-    new THREE.CircleGeometry(11, 48),
+    new THREE.CircleGeometry(11 * WS, 48),
     new THREE.MeshStandardMaterial({ map: rugTexture(), roughness: 0.95 })
   );
-  rug.rotation.x = -Math.PI / 2; rug.position.set(28, 0.02, 0); rug.scale.x = 1.4;
+  rug.rotation.x = -Math.PI / 2; rug.position.set(28 * WS, 0.02, 0); rug.scale.x = 1.4;
   rug.receiveShadow = true;
   scene.add(rug);
 
   // Kitchen tile patch.
   const tile = new THREE.Mesh(
-    new THREE.PlaneGeometry(61, 45),
+    new THREE.PlaneGeometry(61 * WS, 45 * WS),
     new THREE.MeshStandardMaterial({ color: 0xa9a499, roughness: 0.7 })
   );
-  tile.rotation.x = -Math.PI / 2; tile.position.set(123.5, 0.015, -23);
+  tile.rotation.x = -Math.PI / 2; tile.position.set(123.5 * WS, 0.015, -23 * WS);
   tile.receiveShadow = true;
   scene.add(tile);
 
@@ -179,12 +192,14 @@ export function createWorld() {
   const wallMat = new THREE.MeshStandardMaterial({ map: wallTexture(), roughness: 0.92 });
   const baseMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d2, roughness: 0.6 });
   const wall = (w, d, x, z) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, 12, d), wallMat);
-    m.position.set(x, 6, z);
+    w *= WS; d *= WS; x *= WS; z *= WS;
+    const h = 12 * WS;
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
+    m.position.set(x, h / 2, z);
     m.castShadow = true; m.receiveShadow = true;
     scene.add(m);
     obstacles.push(new THREE.Box3(
-      new THREE.Vector3(x - w / 2, 0, z - d / 2), new THREE.Vector3(x + w / 2, 12, z + d / 2)));
+      new THREE.Vector3(x - w / 2, 0, z - d / 2), new THREE.Vector3(x + w / 2, h, z + d / 2)));
     // Baseboard: the little white strip that makes a box read as a ROOM.
     const b = new THREE.Mesh(new THREE.BoxGeometry(w + 0.16, 0.8, d + 0.16), baseMat);
     b.position.set(x, 0.4, z);
@@ -205,26 +220,27 @@ export function createWorld() {
 
   // --- THE CRASH SITE: your green toy plane, nose into the floorboards ---
   const planeMat = new THREE.MeshStandardMaterial({ color: 0x3f8f3f, roughness: 0.5 });
-  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.1, 9.5, 14), planeMat);
-  fuselage.position.set(-4.5, 2.6, -9);
+  const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.6 * WS, 1.1 * WS, 9.5 * WS, 14), planeMat);
+  fuselage.position.set(-4.5 * WS, 2.6 * WS, -9 * WS);
   fuselage.rotation.z = 1.15; fuselage.rotation.y = 0.5;
   fuselage.castShadow = true;
   scene.add(fuselage);
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.22, 10.5), planeMat);
-  wing.position.set(-3.8, 2.9, -8.6); wing.rotation.y = 0.5; wing.castShadow = true;
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(1.6 * WS, 0.22, 10.5 * WS), planeMat);
+  wing.position.set(-3.8 * WS, 2.9 * WS, -8.6 * WS); wing.rotation.y = 0.5; wing.castShadow = true;
   scene.add(wing);
-  const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.0, 1.4), planeMat);
-  tailFin.position.set(-7.2, 4.2, -11.4); tailFin.castShadow = true;
+  const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.0 * WS, 1.4 * WS), planeMat);
+  tailFin.position.set(-7.2 * WS, 4.2 * WS, -11.4 * WS); tailFin.castShadow = true;
   scene.add(tailFin);
   // One solid chunk of wreck = spawn cover.
-  obstacles.push(new THREE.Box3(new THREE.Vector3(-7, 0, -11), new THREE.Vector3(-2, 4, -7)));
-  coverPoints.push(new THREE.Vector3(-0.5, 0, -9), new THREE.Vector3(-4.5, 0, -5.5));
+  obstacles.push(new THREE.Box3(new THREE.Vector3(-7 * WS, 0, -11 * WS), new THREE.Vector3(-2 * WS, 4 * WS, -7 * WS)));
+  coverPoints.push(new THREE.Vector3(-0.5 * WS, 0, -9 * WS), new THREE.Vector3(-4.5 * WS, 0, -5.5 * WS));
   box(1.3, 1.3, 1.3, 1.5, 7.5, 0x7a4a22, { cover: true });            // salvaged crate
 
   // --- LIVING ROOM furniture ---
   // Couch along the south wall — woven upholstery.
   const couchMat = new THREE.MeshStandardMaterial({ map: fabricTexture('#3e4a5c'), roughness: 0.95 });
   const couchPart = (w, h, d, x, y, z) => {
+    w *= WS; h *= WS; d *= WS; x *= WS; y *= WS; z *= WS;
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), couchMat);
     m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; scene.add(m);
     obstacles.push(new THREE.Box3(new THREE.Vector3(x - w/2, 0, z - d/2), new THREE.Vector3(x + w/2, y + h/2, z + d/2)));
@@ -293,47 +309,48 @@ export function createWorld() {
 
   // --- SET DRESSING: the room has to feel LIVED IN ---
   // Floor lamp by the couch: pole, shade, and a warm pool of light.
-  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.4, 0.4, 16),
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(1.1 * WS, 1.4 * WS, 0.4, 16),
     new THREE.MeshStandardMaterial({ color: 0x3a2c1c, roughness: 0.5 }));
-  lampBase.position.set(50, 0.2, -36); lampBase.castShadow = true; scene.add(lampBase);
-  const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 12, 10),
+  lampBase.position.set(50 * WS, 0.2, -36 * WS); lampBase.castShadow = true; scene.add(lampBase);
+  const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 12 * WS, 10),
     new THREE.MeshStandardMaterial({ color: 0x3a2c1c, roughness: 0.5 }));
-  lampPole.position.set(50, 6.2, -36); lampPole.castShadow = true; scene.add(lampPole);
-  const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.6, 3.2, 16, 1, true),
+  lampPole.position.set(50 * WS, 6.2 * WS, -36 * WS); lampPole.castShadow = true; scene.add(lampPole);
+  const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(1.9 * WS, 2.6 * WS, 3.2 * WS, 16, 1, true),
     new THREE.MeshStandardMaterial({ color: 0xf2dcae, roughness: 0.9, emissive: 0xffd9a0, emissiveIntensity: 0.55, side: THREE.DoubleSide }));
-  lampShade.position.set(50, 12.2, -36); scene.add(lampShade);
-  const lampLight = new THREE.PointLight(0xffc88a, 90, 46, 1.8);
-  lampLight.position.set(50, 11, -36); scene.add(lampLight);
-  obstacles.push(new THREE.Box3(new THREE.Vector3(48.9, 0, -37.1), new THREE.Vector3(51.1, 12, -34.9)));
+  lampShade.position.set(50 * WS, 12.2 * WS, -36 * WS); scene.add(lampShade);
+  const lampLight = new THREE.PointLight(0xffc88a, 130, 64, 1.8);
+  lampLight.position.set(50 * WS, 11 * WS, -36 * WS); scene.add(lampLight);
+  obstacles.push(new THREE.Box3(
+    new THREE.Vector3(48.9 * WS, 0, -36.6 * WS), new THREE.Vector3(50.9 * WS, 12 * WS, -35.4 * WS)));
 
   // A second lamp glow in the study so the far rooms aren't pitch black.
-  const studyLight = new THREE.PointLight(0xffc88a, 36, 32, 1.8);
-  studyLight.position.set(126, 9, 30); scene.add(studyLight);
-  const kitchenLight = new THREE.PointLight(0xcfe0ff, 26, 30, 1.8);
-  kitchenLight.position.set(122, 9, -24); scene.add(kitchenLight);
+  const studyLight = new THREE.PointLight(0xffc88a, 52, 45, 1.8);
+  studyLight.position.set(126 * WS, 12, 30 * WS); scene.add(studyLight);
+  const kitchenLight = new THREE.PointLight(0xcfe0ff, 38, 42, 1.8);
+  kitchenLight.position.set(122 * WS, 12, -24 * WS); scene.add(kitchenLight);
 
   // The WEST WINDOW the sunset pours through (the crash came through here too).
   const paneMat = new THREE.MeshBasicMaterial({ color: 0xffb469 });
-  const pane = new THREE.Mesh(new THREE.PlaneGeometry(11, 7), paneMat);
-  pane.position.set(-6.9, 7, -9); pane.rotation.y = Math.PI / 2; scene.add(pane);
+  const pane = new THREE.Mesh(new THREE.PlaneGeometry(11 * WS, 7 * WS), paneMat);
+  pane.position.set(-6.9 * WS, 7 * WS, -9 * WS); pane.rotation.y = Math.PI / 2; scene.add(pane);
   for (const [w, h, y, z] of [[12, 0.7, 3.4, -9], [12, 0.7, 10.6, -9], [0.7, 8, 7, -14.6], [0.7, 8, 7, -3.4], [0.7, 8, 7, -9]]) {
-    const f = new THREE.Mesh(new THREE.BoxGeometry(0.6, h, w === 0.7 ? 0.7 : w),
+    const f = new THREE.Mesh(new THREE.BoxGeometry(0.6, h * WS, (w === 0.7 ? 0.7 : w) * WS),
       new THREE.MeshStandardMaterial({ color: 0x4a382c, roughness: 0.6 }));
-    f.position.set(-6.8, y, z); scene.add(f);
+    f.position.set(-6.8 * WS, y * WS, z * WS); scene.add(f);
   }
 
   // Picture frames on the south wall.
   for (const [x, art] of [[14, 0x35508a], [36, 0x8a6435], [58, 0x4a7a4a]]) {
-    const fr = new THREE.Mesh(new THREE.BoxGeometry(5.4, 4.2, 0.3),
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(5.4 * WS, 4.2 * WS, 0.3),
       new THREE.MeshStandardMaterial({ color: 0x2b1a0c, roughness: 0.5 }));
-    fr.position.set(x, 7.4, -45.3); scene.add(fr);
-    const cv = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 3.2),
+    fr.position.set(x * WS, 7.4 * WS, -45.3 * WS); scene.add(fr);
+    const cv = new THREE.Mesh(new THREE.PlaneGeometry(4.4 * WS, 3.2 * WS),
       new THREE.MeshStandardMaterial({ color: art, roughness: 0.9 }));
-    cv.position.set(x, 7.4, -45.1); scene.add(cv);
+    cv.position.set(x * WS, 7.4 * WS, -45.1 * WS); scene.add(cv);
   }
 
   // --- THE FRONT DOOR: glowing breach zone in the doorway ---
-  const exit = { x: 84.5, z: 42.5, r: 4.5 };
+  const exit = { x: 84.5 * WS, z: 42.5 * WS, r: 4.5 * WS };
   const glow = new THREE.Mesh(
     new THREE.CylinderGeometry(exit.r, exit.r, 0.12, 36),
     new THREE.MeshBasicMaterial({ color: 0x46ff6a, transparent: true, opacity: 0.3 })
@@ -341,8 +358,8 @@ export function createWorld() {
   glow.position.set(exit.x, 0.07, exit.z);
   scene.add(glow);
   // Cold night light spilling in through the open door.
-  const night = new THREE.PointLight(0x6a86ff, 18, 30);
-  night.position.set(84.5, 5, 45);
+  const night = new THREE.PointLight(0x6a86ff, 26, 42);
+  night.position.set(84.5 * WS, 5, 45 * WS);
   scene.add(night);
   // The garrison's foyer emplacements (and the player's approach cover).
   box(1.4, 1.4, 1.4, 79, 37, 0x9a1812, { cover: true, rough: 0.35 });
@@ -354,7 +371,8 @@ export function createWorld() {
   // crate over a soft glow ring (bobbed/pulsed by the mission runner).
   const supplyMat = new THREE.MeshStandardMaterial({ color: 0x2f6b2f, roughness: 0.4 });
   const supplies = [];
-  for (const [sx, sz] of [[89.5, -8], [132, -36], [126, 13]]) {
+  for (let [sx, sz] of [[89.5, -8], [132, -36], [126, 13]]) {
+    sx *= WS; sz *= WS;
     const crate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.0, 1.1), supplyMat);
     crate.position.set(sx, 0.8, sz);
     crate.castShadow = true;
@@ -385,9 +403,9 @@ export function createWorld() {
   );
   lamp.position.set(-0.55, 1.25, 0.3);
   radioGroup.add(lamp);
-  radioGroup.position.set(136, 0, 28);
+  radioGroup.position.set(136 * WS, 0, 28 * WS);
   scene.add(radioGroup);
-  const radio = { pos: new THREE.Vector3(136, 0, 28), alive: true, hp: 30, group: radioGroup, lamp };
+  const radio = { pos: new THREE.Vector3(136 * WS, 0, 28 * WS), alive: true, hp: 30, group: radioGroup, lamp };
 
   // Bake the walkability grid AFTER all furniture is placed — every AI
   // routes around the house with this.

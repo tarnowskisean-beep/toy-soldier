@@ -11,10 +11,10 @@
 
 import { sfx } from './audio.js';
 
-const RESCUE_RANGE = 2.6;
+const RESCUE_RANGE = 3.0;
 const RESCUE_TIME = 1.8;       // seconds beside a downed buddy to wake him
-const PICKUP_RANGE = 2.0;
-const SMASH_RANGE = 1.9;
+const PICKUP_RANGE = 2.4;
+const SMASH_RANGE = 2.2;
 const SMASH_TIME = 1.5;        // seconds beside the radio to cut it quietly
 const RESUPPLY_PCT = 0.5;      // a crate refills half your starting reserve
 const RESUPPLY_HEAL = 20;

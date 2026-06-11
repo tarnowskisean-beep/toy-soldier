@@ -54,8 +54,10 @@ export function createFigure(color, opts = {}) {
 
   // --- Rifle held ACROSS THE CHEST in both hands, muzzle forward ---
   // Same plastic as the body — molded in one piece, like the real toys.
-  add(box(0.14, 0.2, rifleLength), 0.08 * bw, 1.45, 0.55, -0.04, -0.14);
+  // Exposed in userData so aiming can swing it up to point down the sights.
+  const rifle = add(box(0.14, 0.2, rifleLength), 0.08 * bw, 1.45, 0.55, -0.04, -0.14);
   add(box(0.1, 0.3, 0.22), 0.05 * bw, 1.28, 0.3);                    // grip/magazine
+  group.userData.rifle = rifle;
   // Right arm: shoulder down-forward to the grip.
   add(box(0.17 * bw, 0.52, 0.17), 0.34 * bw, 1.4, 0.26, 0.95, 0, -0.3);
   // Left arm: reaching across to the forestock.

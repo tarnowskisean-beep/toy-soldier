@@ -9,8 +9,8 @@ import * as THREE from 'three';
 import { BOUNDS } from './world.js';
 import { segHitsRect } from './physics.js';
 
-const BULLET_SPEED = 70;
-const BULLET_LIFE = 1.5;
+const BULLET_SPEED = 85;
+const BULLET_LIFE = 1.6;
 // Tracers: stretched glowing streaks, not dots — gunfire you can SEE.
 const GEO = new THREE.SphereGeometry(0.11, 6, 6);
 const MAT_PLAYER = new THREE.MeshBasicMaterial({ color: 0xffeeaa });

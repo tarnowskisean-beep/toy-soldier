@@ -57,8 +57,9 @@ export class Soldier {
     // Where the last hit came from (drives the HUD damage-direction arrow).
     this.lastHitFrom = new THREE.Vector3();
     this.lastHitAt = -1e9;
-    this.suppressing = false;// Heavy: holding the suppress ability this frame
-    this.zoomed = false;     // Sniper: holding scope this frame
+    this.suppressing = false;// Heavy: DIG IN toggled (Space) — bullet hose stance
+    this.zoomed = false;     // Sniper: aiming = scoped
+    this.aiming = false;     // RMB held: shoulder the rifle — steady, slow, zoomed
     this.crouched = false;   // C toggles: slower, tighter aim, harder to spot
     this.sprinting = false;  // Shift held: fast, loud, easy to spot, wild aim
 
@@ -86,6 +87,7 @@ export class Soldier {
   spread() {
     let s = this.suppressing ? this.cls.spread * 2.5 : this.cls.spread;
     if (this.crouched) s *= 0.6;          // braced
+    if (this.aiming) s *= 0.55;           // shouldered — sights on
     if (this.sprinting) s *= 2.4;         // running and gunning
     return s;
   }
@@ -121,12 +123,19 @@ export class Soldier {
     this.figure.rotation.y = this.yaw;
     const targetSquash = this.crouched ? 0.66 : 1;
     this.figure.scale.y += (targetSquash - this.figure.scale.y) * Math.min(1, dt * 14);
+    // Shouldering the rifle: swing it from across-the-chest to pointing
+    // down the sightline.
+    const rifle = this.figure.userData.rifle;
+    if (rifle) {
+      const targetRy = this.aiming ? 0.02 : -0.14;
+      rifle.rotation.y += (targetRy - rifle.rotation.y) * Math.min(1, dt * 10);
+    }
   }
 
   // ---------- PLAYER control ----------
   _controlPlayer(input, dt) {
-    // Scope slows the mouse for fine aim; suppress slows your feet.
-    const sens = MOUSE_SENS * (this.zoomed ? 0.4 : 1);
+    // Sights slow the mouse for fine aim (the scope, even more).
+    const sens = MOUSE_SENS * (this.zoomed ? 0.4 : this.aiming ? 0.65 : 1);
     this.yaw -= input.mouseDX * sens;
     this.pitch += input.mouseDY * sens;
     this.pitch = Math.max(-0.2, Math.min(0.9, this.pitch));
@@ -146,6 +155,7 @@ export class Soldier {
       let speed = this.cls.speed;
       if (this.sprinting) speed *= 1.65;
       if (this.crouched) speed *= 0.55;       // sneaking
+      if (this.aiming) speed *= 0.55;         // walking the sights
       if (this.suppressing) speed *= 0.5;     // dug-in heavy moves slowly
       const step = (speed * dt) / len;
       moveBy(this.position, mx * step, mz * step, this.obstacles, 0.6, BOUNDS);
@@ -184,7 +194,7 @@ export class Soldier {
 
     // Rules of engagement: hold fire until the player starts the war (or the
     // enemy does) — except point-blank self-defense.
-    if (engage && !ctx.free && engage.pos.distanceTo(this.position) > 9) engage = null;
+    if (engage && !ctx.free && engage.pos.distanceTo(this.position) > 12) engage = null;
 
     // Where should we walk?
     let goal = null;
@@ -202,7 +212,7 @@ export class Soldier {
         // Hustle when the formation left us behind — the leader can sprint,
         // followers can at least jog.
         let speed = this.cls.speed;
-        if (this.order === ORDER.FOLLOW && dist > 9) speed *= 1.5;
+        if (this.order === ORDER.FOLLOW && dist > 12) speed *= 1.5;
         // navStep paths around furniture instead of grinding into it.
         const dir = navStep(this.nav, this, this.position, goal, speed, dt,
                             this.obstacles, 0.6, BOUNDS);

@@ -19,17 +19,19 @@ import { sfx } from './audio.js';
 // fighting (kill him before he rounds the corner). GUNNER is a slow wall of
 // plastic who walks 4-round bursts at you.
 export const TYPES = {
-  rifle:  { hp: 40, speed: 5,   damage: 13, fireInterval: 0.8, spread: 0.07,
+  rifle:  { hp: 40, speed: 5.8, damage: 13, fireInterval: 0.8, spread: 0.07,
             fig: {} },
-  scout:  { hp: 25, speed: 7.5, damage: 8,  fireInterval: 1.0, spread: 0.09,
+  scout:  { hp: 25, speed: 8.6, damage: 8,  fireInterval: 1.0, spread: 0.09,
             runner: true, fig: { rifleLength: 0.45 } },
-  gunner: { hp: 70, speed: 3.6, damage: 9,  fireInterval: 0.09, spread: 0.12,
+  gunner: { hp: 70, speed: 4.2, damage: 9,  fireInterval: 0.09, spread: 0.12,
             burst: 4, burstPause: 1.5, fig: { bulky: true, rifleLength: 1.3 } },
 };
 
-const ENEMY_RANGE = 30;        // max engagement distance once alerted
-const ENEMY_PREFERRED = 14;    // likes to fight from about here
-const COVER_SEARCH = 24;
+// Distances ride the 1.4x world scale (senses ~×1.25 — the bigger house
+// should feel LONGER-ranged, not just emptier).
+const ENEMY_RANGE = 38;        // max engagement distance once alerted
+const ENEMY_PREFERRED = 18;    // likes to fight from about here
+const COVER_SEARCH = 30;
 const COVER_RECHECK = 2.5;
 const HIT_RADIUS = 0.95;
 const TORSO_Y = 1.1;           // where bullets land / where you aim
@@ -38,15 +40,15 @@ const TOUCH_DPS = 20;
 const CALL_TIME = 1.5;         // seconds at the radio to raise the alarm
 
 // Detection model.
-const SIGHT_RANGE = 23;        // how far a sentry can see
+const SIGHT_RANGE = 29;        // how far a sentry can see
 const SIGHT_CONE = 0.2;        // dot(facing, toTarget) must exceed this (~78°)
-const FIGHT_SIGHT = 34;        // an ALERTED man looks all around, a bit farther
-const HEAR_RANGE = 17;         // gunfire within this wakes a sentry
-const BLAST_HEAR = 26;         // a grenade is the loudest thing in the house
-const SHOUT_RANGE = 9;         // an alerted soldier wakes friends within this
+const FIGHT_SIGHT = 43;        // an ALERTED man looks all around, a bit farther
+const HEAR_RANGE = 21;         // gunfire within this wakes a sentry
+const BLAST_HEAR = 33;         // a grenade is the loudest thing in the house
+const SHOUT_RANGE = 11;        // an alerted soldier wakes friends within this
 const AWARE_RATE = 1.1;        // seconds^-1 of suspicion while you're visible
 const AWARE_DECAY = 0.5;
-const PATROL_SPEED = 2.6;
+const PATROL_SPEED = 3.0;
 const SEARCH_TIME = 4;         // how long they hunt before standing down
 
 // "?" / "!" tell sprites (one canvas texture each, shared).
@@ -167,6 +169,28 @@ export class Enemies {
     this.combatStarted = true;
     for (const e of this.list) {
       if (Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) < HEAR_RANGE) this.alert(e, pos);
+    }
+  }
+
+  // A silent takedown: the victim drops without a shot. Only the SCUFFLE is
+  // audible — a buddy standing beside him hears the body drop; a lone sentry
+  // dies unnoticed. This is what makes two-man posts a puzzle.
+  takedown(e, killerPos) {
+    const i = this.list.indexOf(e);
+    if (i === -1) return false;
+    const dx = e.pos.x - killerPos.x, dz = e.pos.z - killerPos.z;
+    const len = Math.hypot(dx, dz) || 1;
+    this.dying.push({ fig: e.fig, t: 0, dx: dx / len, dz: dz / len, tip: Math.random() < 0.5 ? 1 : -1 });
+    e.fig.remove(e.tell);
+    this.list.splice(i, 1);
+    this.kills++;
+    this.hearScuffle(e.pos);
+    return true;
+  }
+
+  hearScuffle(pos) {
+    for (const e of this.list) {
+      if (Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) < 8) this.alert(e, pos);
     }
   }
 

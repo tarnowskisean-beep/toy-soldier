@@ -10,9 +10,9 @@ import { BOUNDS } from './world.js';
 import { segHitsRect } from './physics.js';
 
 const GRAVITY = 32;
-const THROW_HORIZ = 22;     // baseline horizontal throw speed
+const THROW_HORIZ = 26;     // baseline horizontal throw speed
 const FUSE = 2.2;           // explodes after this long even if it never lands
-const RADIUS = 7;           // blast radius
+const RADIUS = 8.5;         // blast radius
 const MAX_DAMAGE = 130;     // damage at the center, falling to 0 at the edge
 
 const NADE_GEO = new THREE.SphereGeometry(0.22, 8, 8);

@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { Soldier } from './soldier.js';
 import { ORDER } from './soldier.js';
 import { CLASSES, SQUAD_ORDER } from './classes.js';
+import { WORLD_SCALE } from './world.js';
 
 // Formation slots for the (up to 3) inactive members, RELATIVE to the leader:
 // x = left/right, z = forward/back (negative = behind). Rotated to face the
@@ -30,7 +31,7 @@ export class Squad {
       const s = new Soldier(scene, CLASSES[key], obstacles, nav);
       // Rally EAST of the wreck — clamped to standable ground, because a spawn
       // overlapping ANY furniture is a soldier that can never move.
-      const open = nav.nearestOpen(2.5 + i * 2.7, -8 - (i % 2) * 2.6);
+      const open = nav.nearestOpen((2.5 + i * 2.7) * WORLD_SCALE, (-8 - (i % 2) * 2.6) * WORLD_SCALE);
       s.position.set(open.x, 0, open.z);
       s.yaw = Math.PI / 2;                                     // facing into the room
       s.figure.position.copy(s.position);
@@ -67,6 +68,11 @@ export class Squad {
   // doing whatever its current order is.
   setActive(i) {
     if (i < 0 || i >= this.members.length || !this.members[i].alive) return;
+    // The man you leave drops his player-only stances.
+    const prev = this.active;
+    prev.aiming = false;
+    prev.zoomed = false;
+    prev.suppressing = false;
     this.activeIndex = i;
     this.ring.material.color.setHex(this.active.cls.ringColor);
   }

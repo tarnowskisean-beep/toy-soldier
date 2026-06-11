@@ -89,6 +89,21 @@ class Sfx {
     o.start(t); o.stop(t + 0.12);
   }
 
+  // A body easing to the floor: one soft low thud. The whole point is how
+  // little noise it makes next to a gunshot.
+  takedown() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(170, t);
+    o.frequency.exponentialRampToValueAtTime(70, t + 0.09);
+    const g = this.ctx.createGain();
+    this._env(g, t, 0.22, 0.12);
+    o.connect(g).connect(this.master);
+    o.start(t); o.stop(t + 0.14);
+  }
+
   // Magazine out, magazine in: two mechanical clicks, a beat apart.
   reload() {
     if (!this.ctx) return;

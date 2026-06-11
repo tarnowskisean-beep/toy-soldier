@@ -56,7 +56,7 @@ const $ = (id) => document.getElementById(id);
 const menuEl = $('menu'), startEl = $('start'), winEl = $('win'), loseEl = $('gameover');
 const objectiveEl = $('objective'), crosshair = $('crosshair');
 const vignette = $('vignette'), abilityEl = $('ability'), scopeEl = $('scope');
-const ammoEl = $('ammo'), dmgdirEl = $('dmgdir');
+const ammoEl = $('ammo'), dmgdirEl = $('dmgdir'), takedownEl = $('takedown');
 
 const getUnlocked = () => parseInt(localStorage.getItem('ts_unlocked') || '1', 10);
 const setScreen = (s) => localStorage.setItem('ts_screen', s);
@@ -249,6 +249,7 @@ function tick(dt) {
     if (input.consume('KeyR')) squad.active.startReload();
 
     handleAbility(aim);
+    handleTakedown();
 
     squad.update(dt, { input, enemies: enemies.list, bullets, free: enemies.combatStarted });
     if (input.firing && !mapMode && squad.active.tryFireAt(aim.point, bullets)) {
@@ -301,19 +302,20 @@ window.game.step = (frames = 1, dt = 1 / 60) => { for (let i = 0; i < frames; i+
 const cameraBlockers = obstacles.filter((b) =>
   b.max.y >= 3.5 && (b.max.x - b.min.x) * (b.max.z - b.min.z) >= 5);
 let camDist = CAM_DISTANCE;
+let aimT = 0;   // 0 = chase camera, 1 = over-the-shoulder aim camera
 
 function placeCamera(dt = 0) {
   if (mapMode) {
     // Tactical map: straight down over the house. Enemies you haven't met stay
     // hidden — the map shows squad intel, not omniscience.
-    camera.position.set(73.5, 115, 0.01);
-    camera.lookAt(73.5, 0, 0);
+    camera.position.set(103, 162, 0.01);
+    camera.lookAt(103, 0, 0);
     for (const e of enemies.list) {
       let seen = e.alerted || e.aware > 0.05;
       if (!seen) {
         for (const m of squad.members) {
           if (!m.alive) continue;
-          if (m.position.distanceTo(e.pos) < 40 &&
+          if (m.position.distanceTo(e.pos) < 52 &&
               hasLineOfSight(m.position, e.pos, obstacles)) { seen = true; break; }
         }
       }
@@ -323,19 +325,27 @@ function placeCamera(dt = 0) {
   }
   for (const e of enemies.list) e.fig.visible = true;
   const a = squad.active;
-  const ty = a.position.y + CAM_HEIGHT * (a.crouched ? 0.7 : 1);
-  const tx = a.position.x, tz = a.position.z;
+
+  // Aiming pulls the camera in over the RIGHT SHOULDER: closer, lower, and
+  // offset so you see your soldier shoulder the rifle along the sightline.
+  aimT += ((a.aiming ? 1 : 0) - aimT) * Math.min(1, dt * 9);
+  const boomLen = CAM_DISTANCE + (3.4 - CAM_DISTANCE) * aimT;
+  const side = 1.05 * aimT;                       // right-shoulder offset
+  const rx = Math.cos(a.yaw), rz = -Math.sin(a.yaw);
+
+  const ty = a.position.y + (CAM_HEIGHT + (1.85 - CAM_HEIGHT) * aimT) * (a.crouched ? 0.7 : 1);
+  const tx = a.position.x + rx * side, tz = a.position.z + rz * side;
   const cp = Math.cos(a.pitch), sp = Math.sin(a.pitch);
   const dx = -Math.sin(a.yaw) * cp, dy = sp, dz = -Math.cos(a.yaw) * cp;
 
   // The camera is on a boom arm behind the soldier. Cast the arm against the
   // walls and pull the camera IN FRONT of the first one it would cross —
   // a camera inside a wall is a black screen.
-  let want = CAM_DISTANCE;
-  const ex = tx + dx * CAM_DISTANCE, ey = ty + dy * CAM_DISTANCE, ez = tz + dz * CAM_DISTANCE;
+  let want = boomLen;
+  const ex = tx + dx * boomLen, ey = ty + dy * boomLen, ez = tz + dz * boomLen;
   for (const b of cameraBlockers) {
     const t = segBoxEntryT(tx, ty, tz, ex, ey, ez, b);
-    if (t < Infinity) want = Math.min(want, t * CAM_DISTANCE - 0.35);
+    if (t < Infinity) want = Math.min(want, t * boomLen - 0.35);
   }
   want = Math.max(1.4, want);
   // Snap IN instantly (never clip a wall), ease back OUT (no popping).
@@ -362,39 +372,75 @@ function placeCamera(dt = 0) {
   }
 }
 
+// --- SILENT TAKEDOWN ---
+// Close to ~3u of a man who hasn't made you (a sentry, or a hunter who lost
+// you), FROM BEHIND his back arc, and E drops him without a shot. Only an
+// 8u scuffle is heard — his buddy beside him reacts; a lone post doesn't.
+const TAKEDOWN_RANGE = 3.0;
+
+function takedownCandidate() {
+  const a = squad.active;
+  if (!a.alive) return null;
+  let best = null, bestD = TAKEDOWN_RANGE;
+  for (const e of enemies.list) {
+    if (e.alerted && !e.searching) continue;        // eyes-on men can't be grabbed
+    const dx = a.position.x - e.pos.x, dz = a.position.z - e.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d >= bestD) continue;
+    // Behind him: he faces AWAY from you.
+    const fx = Math.sin(e.facing), fz = Math.cos(e.facing);
+    if ((fx * dx + fz * dz) / (d || 1) > -0.1) continue;
+    best = e; bestD = d;
+  }
+  return best;
+}
+
+function handleTakedown() {
+  const cand = takedownCandidate();
+  takedownEl.classList.toggle('show', !!cand);
+  if (cand && input.consume('KeyE')) {
+    enemies.takedown(cand, squad.active.position);
+    sfx.takedown();
+  }
+}
+
 function handleAbility(aim) {
   const a = squad.active;
-  a.suppressing = false;
   a.zoomed = false;
   if (!a.alive) return;
+  // RMB = shoulder the rifle, every class. The sniper's shoulder is a scope.
+  a.aiming = input.aiming && !mapMode;
   const ab = a.cls.ability;
-  if (ab.input === 'hold') {
-    const held = input.aiming;
-    if (ab.key === 'scope') a.zoomed = held;
-    if (ab.key === 'suppress') {
-      a.suppressing = held;
-      if (held) enemies.applySuppression(aim.point, 9, 0.7);
-    }
-  } else if (input.consume('Space') && a.abilityCd <= 0) {
-    if (ab.key === 'grenade') {
-      grenades.throwAt(a.muzzleWorldPosition(), aim.point);
-      a.abilityCd = ab.cooldown;
-    } else if (ab.key === 'revive') {
-      if (squad.reviveNear(a)) a.abilityCd = ab.cooldown;
+  if (ab.key === 'scope') a.zoomed = a.aiming;
+
+  if (ab.key === 'suppress') {
+    // DIG IN is a stance, not a button-hold: Space plants/unplants the gun.
+    if (input.consume('Space')) a.suppressing = !a.suppressing;
+    if (a.suppressing) enemies.applySuppression(aim.point, 12, 0.7);
+  } else {
+    a.suppressing = false;
+    if (input.consume('Space') && a.abilityCd <= 0) {
+      if (ab.key === 'grenade') {
+        grenades.throwAt(a.muzzleWorldPosition(), aim.point);
+        a.abilityCd = ab.cooldown;
+      } else if (ab.key === 'revive') {
+        if (squad.reviveNear(a)) a.abilityCd = ab.cooldown;
+      }
     }
   }
 }
 
 function updateZoom(dt) {
-  // Scope narrows, sprint widens — the lens tells your legs' story.
+  // The lens ladder: scope < shouldered aim < normal < sprint.
   const a = squad.active;
-  const target = a.zoomed ? 28 : (a.sprinting ? 76 : 70);
+  const target = a.zoomed ? 28 : (a.aiming ? 52 : (a.sprinting ? 76 : 70));
   camFov += (target - camFov) * Math.min(1, dt * 12);
   if (Math.abs(camera.fov - camFov) > 0.01) {
     camera.fov = camFov;
     camera.updateProjectionMatrix();
   }
   scopeEl.classList.toggle('show', a.zoomed);
+  crosshair.classList.toggle('ads', a.aiming && !a.zoomed);
 }
 
 function updateAmmoHUD() {
@@ -433,7 +479,7 @@ function updateDamageHUD() {
 
 function updateAbilityHUD() {
   const a = squad.active, ab = a.cls.ability;
-  abilityEl.textContent = (ab.input === 'hold' ? 'RMB' : 'SPACE') + '  ' + ab.name;
+  abilityEl.textContent = (ab.input === 'aim' ? 'RMB' : 'SPACE') + '  ' + ab.name;
   const engaged = (ab.key === 'suppress' && a.suppressing) || (ab.key === 'scope' && a.zoomed);
   abilityEl.classList.toggle('active', engaged);
   abilityEl.classList.toggle('cooldown', ab.input === 'press' && a.abilityCd > 0);

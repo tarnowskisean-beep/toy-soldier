@@ -32,6 +32,8 @@
       #crosshair::after  { top: 8px; left: 0; height: 2px; width: 18px; }
       #crosshair.enemy::before, #crosshair.enemy::after { background: #ff3b30; }
       #crosshair.hit { transform: translate(-50%, -50%) scale(1.45); }
+      #crosshair.ads { transform: translate(-50%, -50%) scale(0.78); }
+      #crosshair.ads::before, #crosshair.ads::after { background: rgba(220,255,220,0.95); }
       #titlecard { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%);
         text-align: center; pointer-events: none; transition: opacity 1.4s ease; opacity: 1; }
       #titlecard.fade { opacity: 0; }
@@ -80,6 +82,13 @@
         background: radial-gradient(ellipse at 50% 100%, transparent 40%, rgba(255,40,30,0.85) 41%); }
 
       /* Stage banner under the objective line */
+      /* Takedown prompt: appears just under the crosshair when a kill is there */
+      #takedown { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%);
+        font-size: 14px; font-weight: bold; letter-spacing: 2px; padding: 5px 14px;
+        border-radius: 5px; background: rgba(10, 24, 10, 0.78); border: 2px solid rgba(150,255,150,0.55);
+        color: #c9ffc9; opacity: 0; transition: opacity 0.12s; }
+      #takedown.show { opacity: 1; }
+
       #toast { position: absolute; top: 58px; left: 50%; transform: translateX(-50%) translateY(-8px);
         font-size: 14px; font-weight: bold; letter-spacing: 2px; padding: 6px 16px;
         border-radius: 5px; background: rgba(20, 38, 18, 0.78); border: 2px solid rgba(140,255,140,0.35);
@@ -147,6 +156,7 @@
       <div id="toast"></div>
       <div id="crosshair"></div>
       <div id="dmgdir"></div>
+      <div id="takedown">E&nbsp;&nbsp;SILENT TAKEDOWN</div>
       <div id="titlecard" class="hidden">
         <div id="cardCampaign">THE LONG WAY HOME</div>
         <div id="cardMission">Mission 1 — CRASH SITE</div>
@@ -168,9 +178,10 @@
         <h1 id="briefName">MISSION</h1>
         <h2 id="briefSector">SECTOR</h2>
         <div class="row" id="briefText" style="margin-bottom:14px;"></div>
-        <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>CLICK</b> fire • <b>R</b> reload • <b>SHIFT</b> sprint • <b>C</b> crouch (sneak)</div>
-        <div class="row"><b>1–4 / TAB</b> switch soldier • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold</div>
-        <div class="row"><b>RMB</b> scope/suppress • <b>SPACE</b> grenade/revive <i>(by class)</i> • <b>M</b> tactical map</div>
+        <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>RMB</b> aim • <b>CLICK</b> fire • <b>R</b> reload</div>
+        <div class="row"><b>SHIFT</b> sprint • <b>C</b> crouch (sneak) • <b>E</b> silent takedown <i>(from behind)</i></div>
+        <div class="row"><b>1–4 / TAB</b> switch soldier • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold • <b>M</b> map</div>
+        <div class="row"><b>SPACE</b> grenade / revive / dig in <i>(by class)</i></div>
         <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>
       </div>
 
