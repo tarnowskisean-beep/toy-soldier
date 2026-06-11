@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
-import { ARENA } from './world.js';
+import { BOUNDS } from './world.js';
 
 const MOUSE_SENS = 0.0022;
 
@@ -38,6 +38,8 @@ export class Soldier {
     this.abilityCd = 0;      // cooldown on press-abilities (grenade/revive)
     this.suppressing = false;// Heavy: holding the suppress ability this frame
     this.zoomed = false;     // Sniper: holding scope this frame
+    this.crouched = false;   // C toggles: slower, tighter aim, harder to spot
+    this.sprinting = false;  // Shift held: fast, loud, easy to spot, wild aim
 
     // AI state
     this.order = ORDER.FOLLOW;
@@ -60,7 +62,12 @@ export class Soldier {
   // ctx = { isActive, input, enemies, bullets, formationSlot }
   // Effective stats, adjusted by the Heavy's suppress stance.
   fireInterval() { return this.suppressing ? this.cls.fireInterval * 0.5 : this.cls.fireInterval; }
-  spread() { return this.suppressing ? this.cls.spread * 2.5 : this.cls.spread; }
+  spread() {
+    let s = this.suppressing ? this.cls.spread * 2.5 : this.cls.spread;
+    if (this.crouched) s *= 0.6;          // braced
+    if (this.sprinting) s *= 2.4;         // running and gunning
+    return s;
+  }
 
   update(dt, ctx) {
     if (!this.alive) return;
@@ -70,9 +77,12 @@ export class Soldier {
     if (ctx.isActive) this._controlPlayer(ctx.input, dt);
     else              this._controlAI(dt, ctx);
 
-    // Sync the visible figure to our logical position/facing.
+    // Sync the visible figure to our logical position/facing. Crouching squashes
+    // the toy down (and reads as "harder to see" at a glance).
     this.figure.position.copy(this.position);
     this.figure.rotation.y = this.yaw;
+    const targetSquash = this.crouched ? 0.66 : 1;
+    this.figure.scale.y += (targetSquash - this.figure.scale.y) * Math.min(1, dt * 14);
   }
 
   // ---------- PLAYER control ----------
@@ -93,20 +103,26 @@ export class Soldier {
     if (input.isDown('KeyA')) { mx -= this._r.x; mz -= this._r.z; }
 
     const len = Math.hypot(mx, mz);
+    this.sprinting = len > 0 && input.isDown('ShiftLeft') && !this.crouched;
     if (len > 0) {
-      let speed = input.isDown('ShiftLeft') ? this.cls.speed * 1.6 : this.cls.speed;
+      let speed = this.cls.speed;
+      if (this.sprinting) speed *= 1.65;
+      if (this.crouched) speed *= 0.55;       // sneaking
       if (this.suppressing) speed *= 0.5;     // dug-in heavy moves slowly
       const step = (speed * dt) / len;
-      moveBy(this.position, mx * step, mz * step, this.obstacles, 0.6, ARENA - 1);
+      moveBy(this.position, mx * step, mz * step, this.obstacles, 0.6, BOUNDS);
+    } else {
+      this.sprinting = false;
     }
   }
 
   // Player firing — called from main when the mouse is held. `aimPoint` is the
   // world point under the crosshair, so shots go where you're actually looking.
   tryFireAt(aimPoint, bullets) {
-    if (!this.alive || this.fireCooldown > 0) return;
+    if (!this.alive || this.fireCooldown > 0) return false;
     bullets.fire(this.muzzleWorldPosition(), this._aimDir(aimPoint), 'player', this.cls.damage);
     this.fireCooldown = this.fireInterval();
+    return true;
   }
 
   // ---------- AI control ----------
@@ -116,6 +132,10 @@ export class Soldier {
     let engage = (this.order === ORDER.ATTACK && this._targetAlive())
       ? this.target
       : this._nearestEnemy(ctx.enemies, this.cls.range);
+
+    // Rules of engagement: hold fire until the player starts the war (or the
+    // enemy does) — except point-blank self-defense.
+    if (engage && !ctx.free && engage.pos.distanceTo(this.position) > 9) engage = null;
 
     // Where should we walk?
     let goal = null;
@@ -132,7 +152,7 @@ export class Soldier {
       if (dist > standoff) {
         this._t.multiplyScalar(1 / dist);
         const step = this.cls.speed * dt;
-        moveBy(this.position, this._t.x * step, this._t.z * step, this.obstacles, 0.6, ARENA - 1);
+        moveBy(this.position, this._t.x * step, this._t.z * step, this.obstacles, 0.6, BOUNDS);
         if (!engage) this.yaw = Math.atan2(this._t.x, this._t.z); // face travel dir
       }
     }

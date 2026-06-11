@@ -44,7 +44,7 @@ public:
 	AToySoldier* GetActive() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Squad")
-	void SetActive(int32 Index);      // take control of member [Index]
+	void SelectMember(int32 Index);      // take control of member [Index]
 
 	UFUNCTION(BlueprintCallable, Category = "Squad")
 	void CycleNext();

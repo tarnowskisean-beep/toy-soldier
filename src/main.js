@@ -11,6 +11,7 @@ import { Grenades } from './grenades.js';
 import { buildSquadHUD, updateSquadHUD } from './hud.js';
 import { MISSIONS, missionById } from './missions.js';
 import { MissionRunner } from './mission.js';
+import { hasLineOfSight } from './physics.js';
 
 // --- Renderer + camera ---
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -24,7 +25,7 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerH
 const CAM_DISTANCE = 7, CAM_HEIGHT = 2.2;
 
 // --- Build the world + squad (enemies spawn when a mission starts) ---
-const { scene, obstacles, coverPoints } = createWorld();
+const { scene, obstacles, coverPoints, exit, exitGlow } = createWorld();
 const input = new Input(renderer.domElement);
 const squad = new Squad(scene, obstacles);
 const bullets = new Bullets(scene, obstacles);
@@ -65,7 +66,7 @@ function buildMenu() {
   const list = $('missionList');
   list.innerHTML = '';
   MISSIONS.forEach((m, i) => {
-    const locked = i >= unlocked;
+    const locked = i >= unlocked || m.comingSoon;
     const div = document.createElement('div');
     div.className = 'mission' + (locked ? ' locked' : '');
     div.innerHTML =
@@ -89,7 +90,7 @@ function showBriefing(def) {
 
 function startPlaying() {
   hideAllScreens();
-  mission = new MissionRunner(currentDef, scene);
+  mission = new MissionRunner(currentDef, scene, exit);
   mission.begin(enemies);
   objectiveEl.classList.remove('hidden');
   state = 'playing';
@@ -102,7 +103,7 @@ function onWin() {
   const idx = MISSIONS.findIndex((m) => m.id === currentDef.id);
   const isLast = idx >= MISSIONS.length - 1;
   localStorage.setItem('ts_unlocked', Math.max(getUnlocked(), Math.min(idx + 2, MISSIONS.length)));
-  $('winText').textContent = isLast ? 'CAMPAIGN COMPLETE — THE HOUSE IS OURS' : 'SECTOR SECURED';
+  $('winText').textContent = isLast ? 'CAMPAIGN COMPLETE — HOME AT LAST' : (currentDef.winText || 'OBJECTIVE COMPLETE');
   $('nextBtn').classList.toggle('hidden', isLast);
   winEl.classList.remove('hidden');
 }
@@ -167,13 +168,23 @@ function getAim() {
 }
 
 let camFov = 70;
+let mapMode = false;
 const clock = new THREE.Clock();
+
+// Muzzle flash: one pooled light, repositioned to the active soldier's muzzle
+// on every shot and faded out fast.
+const muzzleLight = new THREE.PointLight(0xffd9a0, 0, 14);
+scene.add(muzzleLight);
 
 function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  tick(Math.min(clock.getDelta(), 0.05));
+}
 
-  if (state === 'playing' && input.locked && squad.alive) {
+// One simulation+render step. Extracted from loop() so automation (and tests)
+// can step the game deterministically even when rAF is throttled.
+function tick(dt) {
+  if (state === 'playing' && (input.locked || input.debugLock) && squad.alive) {
     if (input.consume('Digit1')) squad.setActive(0);
     if (input.consume('Digit2')) squad.setActive(1);
     if (input.consume('Digit3')) squad.setActive(2);
@@ -188,11 +199,21 @@ function loop() {
     }
     if (input.consume('KeyF')) squad.orderFollow();
     if (input.consume('KeyH')) squad.orderHold();
+    if (input.consume('KeyC')) squad.active.crouched = !squad.active.crouched;
+    if (input.consume('KeyM')) mapMode = !mapMode;
 
     handleAbility(aim);
 
-    squad.update(dt, { input, enemies: enemies.list, bullets });
-    if (input.firing) squad.active.tryFireAt(aim.point, bullets);
+    squad.update(dt, { input, enemies: enemies.list, bullets, free: enemies.combatStarted });
+    if (input.firing && !mapMode && squad.active.tryFireAt(aim.point, bullets)) {
+      // The shot is LOUD: sentries in earshot wake, the flash pops, the camera kicks.
+      const mz = squad.active.muzzleWorldPosition();
+      enemies.hearGunshot(mz);
+      muzzleLight.position.copy(mz);
+      muzzleLight.intensity = 26;
+      squad.active.pitch += 0.012;
+    }
+    muzzleLight.intensity *= Math.pow(0.0001, dt);   // fast falloff
     grenades.update(dt, enemies.list);
     bullets.update(dt);
     enemies.update(dt, squad, bullets);
@@ -203,6 +224,8 @@ function loop() {
 
     updateSquadHUD(squad, enemies.kills);
     updateAbilityHUD();
+    crosshair.classList.toggle('hit', enemies.hitFlash > 0);
+    exitGlow.material.opacity = 0.25 + 0.15 * Math.sin(performance.now() * 0.004);
     vignette.classList.toggle('show', squad.active.alive && squad.active.health < 35);
 
     // --- Mission objective ---
@@ -215,10 +238,31 @@ function loop() {
   input.endFrame();
   renderer.render(scene, camera);
 }
+window.game.step = (frames = 1, dt = 1 / 60) => { for (let i = 0; i < frames; i++) tick(dt); };
 
 function placeCamera() {
+  if (mapMode) {
+    // Tactical map: straight down over the house. Enemies you haven't met stay
+    // hidden — the map shows squad intel, not omniscience.
+    camera.position.set(73.5, 115, 0.01);
+    camera.lookAt(73.5, 0, 0);
+    for (const e of enemies.list) {
+      let seen = e.alerted || e.aware > 0.05;
+      if (!seen) {
+        for (const m of squad.members) {
+          if (!m.alive) continue;
+          if (m.position.distanceTo(e.pos) < 40 &&
+              hasLineOfSight(m.position, e.pos, obstacles)) { seen = true; break; }
+        }
+      }
+      e.fig.visible = seen;
+    }
+    return;
+  }
+  for (const e of enemies.list) e.fig.visible = true;
   const a = squad.active;
-  const tx = a.position.x, ty = a.position.y + CAM_HEIGHT, tz = a.position.z;
+  const ty2 = a.position.y + CAM_HEIGHT * (a.crouched ? 0.7 : 1);
+  const tx = a.position.x, ty = ty2, tz = a.position.z;
   const cp = Math.cos(a.pitch), sp = Math.sin(a.pitch);
   camera.position.set(
     tx - Math.sin(a.yaw) * cp * CAM_DISTANCE,

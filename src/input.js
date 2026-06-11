@@ -13,6 +13,7 @@ export class Input {
     this.firing = false;                  // is the left mouse button held?
     this.aiming = false;                  // is the right mouse button held? (hold abilities)
     this.locked = false;                  // do we currently own the mouse (pointer lock)?
+    this.debugLock = false;               // dev: lets automation drive the game without pointer lock
 
     this._dom = domElement;
 

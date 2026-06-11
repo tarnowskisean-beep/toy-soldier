@@ -22,7 +22,8 @@ public class ToySoldier : ModuleRules
 			"EnhancedInput",     // player input (move/look/fire/abilities/wheel)
 			"AIModule",          // AI controllers for unpossessed squadmates
 			"NavigationSystem",
-			"GameplayTasks"
+			"GameplayTasks",
+			"PhysicsCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });

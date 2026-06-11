@@ -25,7 +25,8 @@ export class Squad {
   constructor(scene, obstacles) {
     this.members = SQUAD_ORDER.map((key, i) => {
       const s = new Soldier(scene, CLASSES[key], obstacles);
-      s.position.set((i - 1.5) * 2.5, 0, -6);   // line them up at spawn
+      s.position.set(2.5 + i * 2.7, 0, -8 - (i % 2) * 2.6);   // rally EAST of the wreck
+      s.yaw = Math.PI / 2;                                     // facing into the room
       s.figure.position.copy(s.position);
       s.order = ORDER.FOLLOW;
       return s;
@@ -97,6 +98,7 @@ export class Squad {
         input: ctx.input,
         enemies: ctx.enemies,
         bullets: ctx.bullets,
+        free: ctx.free,
         formationSlot: isActive ? null : slots[s++ % slots.length],
       });
     }

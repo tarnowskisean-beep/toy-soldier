@@ -5,12 +5,13 @@
 import * as THREE from 'three';
 
 export class MissionRunner {
-  constructor(def, scene) {
+  constructor(def, scene, exit) {
     this.def = def;
     this.scene = scene;
+    this.exit = exit;          // the front-door breach zone (escape missions)
     this.state = 'active';     // 'active' | 'won' | 'lost'
     this.timeAcc = 0;          // survive countdown / secure hold timer
-    this.waveTimer = def.enemies.waves ? def.enemies.waves.interval : 0;
+    this.waveTimer = (def.enemies && def.enemies.waves) ? def.enemies.waves.interval : 0;
     this.startKills = 0;
     this.zone = null;
 
@@ -29,9 +30,8 @@ export class MissionRunner {
 
   // Spawn the mission's starting enemies. Call once after construction.
   begin(enemies) {
-    enemies.respawnOnDeath = false;
     this.startKills = enemies.kills;
-    if (this.def.enemies.initial) enemies.spawnWave(this.def.enemies.initial);
+    if (this.def.enemyLayout) enemies.spawnLayout(this.def.enemyLayout);
   }
 
   killCount(enemies) {
@@ -43,7 +43,7 @@ export class MissionRunner {
     const o = this.def.objective;
 
     // Reinforcement waves (survive missions).
-    const w = this.def.enemies.waves;
+    const w = this.def.enemies && this.def.enemies.waves;
     if (w) {
       this.waveTimer -= dt;
       if (this.waveTimer <= 0 && enemies.list.length < w.max) {
@@ -73,6 +73,22 @@ export class MissionRunner {
       if (this.timeAcc >= o.seconds) this.state = 'won';
     }
 
+    if (o.type === 'escape') {
+      // Any living member in the door zone, with no living tan contesting it.
+      const z = this.exit;
+      let inside = false, contested = false;
+      for (const m of squad.members) {
+        if (m.alive && Math.hypot(m.position.x - z.x, m.position.z - z.z) < z.r) inside = true;
+      }
+      for (const e of enemies.list) {
+        if (Math.hypot(e.pos.x - z.x, e.pos.z - z.z) < z.r + 9) { contested = true; break; }
+      }
+      this.timeAcc = (inside && !contested)
+        ? this.timeAcc + dt
+        : Math.max(0, this.timeAcc - dt * 0.6);
+      if (this.timeAcc >= o.holdSeconds) this.state = 'won';
+    }
+
     // Loss: the whole squad is down.
     if (!squad.alive) this.state = 'lost';
   }
@@ -87,6 +103,11 @@ export class MissionRunner {
     }
     if (o.type === 'secure') {
       return `SECURE THE ZONE   ${Math.min(this.timeAcc, o.seconds).toFixed(1)} / ${o.seconds}s`;
+    }
+    if (o.type === 'escape') {
+      if (this.timeAcc > 0.05) return `BREACHING THE FRONT DOOR   ${this.timeAcc.toFixed(1)} / ${o.holdSeconds}s`;
+      const tag = enemies.firstSpotted ? '' : '   ·   UNDETECTED';
+      return `ESCAPE THE HOUSE — reach the front door   (tan: ${enemies.list.length})${tag}`;
     }
     return '';
   }

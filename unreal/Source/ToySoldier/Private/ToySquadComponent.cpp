@@ -24,7 +24,7 @@ void UToySquadComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	if (!Active || !Active->IsAlive())
 	{
 		const int32 Next = FirstAliveIndex();
-		if (Next != INDEX_NONE) SetActive(Next);
+		if (Next != INDEX_NONE) SelectMember(Next);
 	}
 }
 
@@ -35,7 +35,7 @@ void UToySquadComponent::InitializeSquad()
 		if (M) { M->Order = ESquadOrder::Follow; M->SetPlayerControlled(false); }
 	}
 	ActiveIndex = FirstAliveIndex();
-	if (ActiveIndex != INDEX_NONE) SetActive(ActiveIndex);
+	if (ActiveIndex != INDEX_NONE) SelectMember(ActiveIndex);
 }
 
 AToySoldier* UToySquadComponent::GetActive() const
@@ -43,7 +43,7 @@ AToySoldier* UToySquadComponent::GetActive() const
 	return Members.IsValidIndex(ActiveIndex) ? Members[ActiveIndex] : nullptr;
 }
 
-void UToySquadComponent::SetActive(int32 Index)
+void UToySquadComponent::SelectMember(int32 Index)
 {
 	if (!Members.IsValidIndex(Index) || !Members[Index] || !Members[Index]->IsAlive())
 	{
@@ -75,7 +75,7 @@ void UToySquadComponent::CycleNext()
 		const int32 I = (ActiveIndex + N) % Count;
 		if (Members.IsValidIndex(I) && Members[I] && Members[I]->IsAlive())
 		{
-			SetActive(I);
+			SelectMember(I);
 			return;
 		}
 	}

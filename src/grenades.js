@@ -6,7 +6,7 @@
 // damage that falls off with distance, plus a brief expanding-flash visual.
 
 import * as THREE from 'three';
-import { ARENA } from './world.js';
+import { BOUNDS } from './world.js';
 import { segHitsRect } from './physics.js';
 
 const GRAVITY = 32;
@@ -52,7 +52,7 @@ export class Grenades {
       p.addScaledVector(n.vel, dt);
       n.fuse -= dt;
 
-      let boom = n.fuse <= 0 || p.y <= 0.2 || Math.abs(p.x) > ARENA || Math.abs(p.z) > ARENA;
+      let boom = n.fuse <= 0 || p.y <= 0.2 || p.x < BOUNDS.minX || p.x > BOUNDS.maxX || p.z < BOUNDS.minZ || p.z > BOUNDS.maxZ;
       if (!boom) {
         for (const b of this.obstacles) {
           if (p.y <= b.max.y && segHitsRect(px, pz, p.x, p.z, b.min.x, b.min.z, b.max.x, b.max.z)) {

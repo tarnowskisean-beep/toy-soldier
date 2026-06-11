@@ -5,10 +5,11 @@
 // call moveBy(). One copy of a rule = one place to fix bugs.
 
 // Try to move `pos` by (dx, dz). We attempt each axis SEPARATELY so that when
-// you push into a crate you slide along its face instead of stopping dead.
-export function moveBy(pos, dx, dz, obstacles, radius, bound) {
-  _step(pos, pos.x + dx, pos.z, obstacles, radius, bound);
-  _step(pos, pos.x, pos.z + dz, obstacles, radius, bound);
+// you push into a wall you slide along its face instead of stopping dead.
+// `bounds` is the walkable rect: { minX, maxX, minZ, maxZ }.
+export function moveBy(pos, dx, dz, obstacles, radius, bounds) {
+  _step(pos, pos.x + dx, pos.z, obstacles, radius, bounds);
+  _step(pos, pos.x, pos.z + dz, obstacles, radius, bounds);
 }
 
 // Does the 2D segment (ax,az)->(bx,bz) cross the axis-aligned rectangle?
@@ -44,9 +45,9 @@ export function hasLineOfSight(from, to, obstacles) {
   return true;
 }
 
-function _step(pos, nx, nz, obstacles, radius, bound) {
-  // Stay inside the arena.
-  if (nx < -bound || nx > bound || nz < -bound || nz > bound) return;
+function _step(pos, nx, nz, obstacles, radius, bounds) {
+  // Stay inside the house.
+  if (nx < bounds.minX || nx > bounds.maxX || nz < bounds.minZ || nz > bounds.maxZ) return;
   // Don't enter any crate (expanded by our body radius).
   for (const box of obstacles) {
     if (nx > box.min.x - radius && nx < box.max.x + radius &&

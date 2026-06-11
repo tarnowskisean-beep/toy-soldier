@@ -1,39 +1,59 @@
-// missions.js — the single-player campaign, as data.
+// missions.js — THE LONG WAY HOME, as data.
 //
-// Each mission is a small config the MissionRunner interprets. Three objective
-// verbs cover a lot of ground: eliminate (clear them out), survive (hold against
-// waves), and secure (stand on a marker until it's yours).
+// The campaign: your squad's toy plane is shot down and crashes into a stranger's
+// house. Fight room to room, escape to the street, and make it back to the toy
+// store. Each mission is one environment; missions end by REACHING somewhere.
 
 export const MISSIONS = [
   {
-    id: 'beachhead',
-    name: 'BEACHHEAD',
-    sector: 'SECTOR — LIVING ROOM FLOOR',
+    id: 'crash-site',
+    name: 'CRASH SITE',
+    sector: 'THE HOUSE — LIVING ROOM, DUSK',
     briefing:
-      'Tan forces hold the floor. Move up with your fireteam and wipe out the ' +
-      'patrol. Use cover — they shoot back.',
-    objective: { type: 'eliminate', count: 8 },
-    enemies: { initial: 8 },
+      'We came down hard through the window. The house is crawling with tan — ' +
+      'outposts at the furniture, patrols in the halls, a garrison on the front ' +
+      'door. They have not found the wreck yet: you are UNDETECTED. Sneak or ' +
+      'shoot — but get the squad to the FRONT DOOR and breach it.',
+    objective: { type: 'escape', holdSeconds: 3 },
+    winText: 'ESCAPED THE HOUSE — ONTO THE PORCH',
+    // The tan occupation. facing is radians (atan2(x, z) style).
+    enemyLayout: [
+      // LIVING ROOM — coffee-table outpost, ottoman watch, book-stack post, door guard.
+      { x: 24.5, z: -4, facing: -Math.PI / 2 },
+      { x: 32.5, z: 9.5, facing: -Math.PI / 2 },
+      { x: 38, z: 22, facing: -2.3 },
+      { x: 45.5, z: -16.5, facing: -1.8 },
+      { x: 69.5, z: 18, facing: -Math.PI / 2 },
+      // ...and one roamer crossing the rug lanes.
+      { x: 53, z: -27, facing: -Math.PI / 2, patrol: { x: 23, z: -22 } },
+      // HALLWAY — a sentry watching the living-room door + a corridor patrol.
+      { x: 85, z: -13, facing: -1.2 },
+      { x: 84.5, z: 30, facing: Math.PI, patrol: { x: 84.5, z: -36 } },
+      // KITCHEN — two-man post (they'll hear a hallway fight through the door).
+      { x: 123, z: -27, facing: -Math.PI / 2 },
+      { x: 108, z: -35, facing: -1.0 },
+      // STUDY — two-man post.
+      { x: 122, z: 26, facing: -Math.PI / 2 },
+      { x: 105, z: 38, facing: 2.6 },
+      // FOYER GARRISON — the fight you can't skip, guarding the front door.
+      { x: 80, z: 39, facing: Math.PI },
+      { x: 89, z: 39.5, facing: Math.PI },
+      { x: 84.5, z: 43.5, facing: Math.PI },
+    ],
   },
   {
-    id: 'doormat',
-    name: 'HOLD THE DOORMAT',
-    sector: 'SECTOR — FRONT HALL',
-    briefing:
-      'The tan are counterattacking through the doorway. Dig in and HOLD for ' +
-      '60 seconds. Put the Heavy on suppress and keep the Medic close.',
-    objective: { type: 'survive', seconds: 60 },
-    enemies: { waves: { interval: 6, perWave: 3, max: 10 }, initial: 4 },
+    id: 'hallway',
+    name: 'OUT THE DOOR',
+    sector: 'THE PORCH — NIGHT',
+    briefing: 'Coming soon.',
+    comingSoon: true,
   },
   {
-    id: 'outpost',
-    name: 'SECURE THE OUTPOST',
-    sector: 'SECTOR — THE COFFEE TABLE',
-    briefing:
-      'Push to the marker and hold the ground. Stay in the zone for 12 seconds ' +
-      'to secure it — but the tan will contest you the whole way.',
-    objective: { type: 'secure', seconds: 12, zone: { x: 26, z: 0, r: 6 } },
-    enemies: { initial: 7 },
+    id: 'street',
+    name: 'THE STREET',
+    sector: 'OUTSIDE — NIGHT',
+    briefing: 'Coming soon.',
+    comingSoon: true,
   },
 ];
 

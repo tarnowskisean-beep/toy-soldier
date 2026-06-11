@@ -177,10 +177,10 @@ void AToyPlayerController::OnAimStarted(const FInputActionValue& /*Value*/) { bA
 void AToyPlayerController::OnAimReleased(const FInputActionValue& /*Value*/) { bAimHeld = false; }
 
 void AToyPlayerController::OnCycle(const FInputActionValue& /*Value*/) { if (Squad) Squad->CycleNext(); }
-void AToyPlayerController::OnSelect1() { if (Squad) Squad->SetActive(0); }
-void AToyPlayerController::OnSelect2() { if (Squad) Squad->SetActive(1); }
-void AToyPlayerController::OnSelect3() { if (Squad) Squad->SetActive(2); }
-void AToyPlayerController::OnSelect4() { if (Squad) Squad->SetActive(3); }
+void AToyPlayerController::OnSelect1() { if (Squad) Squad->SelectMember(0); }
+void AToyPlayerController::OnSelect2() { if (Squad) Squad->SelectMember(1); }
+void AToyPlayerController::OnSelect3() { if (Squad) Squad->SelectMember(2); }
+void AToyPlayerController::OnSelect4() { if (Squad) Squad->SelectMember(3); }
 
 // ---------- Helpers ----------
 bool AToyPlayerController::GetAim(FVector& OutPoint, AActor*& OutTarget) const

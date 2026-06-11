@@ -6,7 +6,7 @@
 // we're not allocating garbage every shot.
 
 import * as THREE from 'three';
-import { ARENA } from './world.js';
+import { BOUNDS } from './world.js';
 import { segHitsRect } from './physics.js';
 
 const BULLET_SPEED = 70;
@@ -33,6 +33,7 @@ export class Bullets {
     this.active.push({
       mesh,
       vel: dir.clone().multiplyScalar(BULLET_SPEED),
+      dir: dir.clone(),                       // kept for hit knockback direction
       life: BULLET_LIFE,
       team,
       damage,
@@ -47,8 +48,9 @@ export class Bullets {
       p.addScaledVector(b.vel, dt);          // ...then move it
       b.life -= dt;
 
-      let dead = b.life <= 0 ||
-        Math.abs(p.x) > ARENA || Math.abs(p.z) > ARENA || p.y < 0;
+      let dead = b.life <= 0 || p.y < 0 ||
+        p.x < BOUNDS.minX - 8 || p.x > BOUNDS.maxX + 8 ||
+        p.z < BOUNDS.minZ - 8 || p.z > BOUNDS.maxZ + 8;
 
       // Crate collision: did the path from old->new cross any crate? (Sweeping
       // the segment, not just testing the point, prevents fast bullets tunneling.)
