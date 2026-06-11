@@ -57,7 +57,7 @@ export const MISSIONS = [
       { x: 45.5, z: -16.5, facing: -1.8 },                              // book-stack post
       { x: 53, z: -27, facing: -Math.PI / 2, type: 'scout', patrol: { x: 23, z: -22 } },  // rug-lane scout
       { x: 69.5, z: 18, facing: -Math.PI / 2 },                         // hallway-door guard
-      { x: 56, z: 18, facing: -2.2, type: 'lookout', baseY: 9.1 },      // THE WATCHTOWER
+      { x: 56, z: 18, facing: -2.2, type: 'lookout', baseY: 6.45 },     // THE WATCHTOWER
       // HALLWAY — a sentry + the corridor scout.
       { x: 85, z: -13, facing: -1.2 },
       { x: 84.5, z: 30, facing: Math.PI, type: 'scout', patrol: { x: 84.5, z: -36 } },

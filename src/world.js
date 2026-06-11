@@ -268,13 +268,14 @@ function buildHouse() {
   box(5, 7, 5, 60, -6, 0xd8cfae, { cover: true, rough: 0.7 });
 
   // THE WATCHTOWER: a tan lookout post built from a wooden block, parapet
-  // rim on top. The lookout up there sees FAR — but the tower's own rim
-  // shadows a dead zone beneath him (hug the base and he can't see you).
-  box(5, 6.5, 5, 56, 18, 0x6b4a26, { cover: true, rough: 0.7 });
-  box(5.2, 0.7, 0.5, 56, 15.7, 0x8a7a4a, { y: 6.85, obstacle: false });
-  box(5.2, 0.7, 0.5, 56, 20.3, 0x8a7a4a, { y: 6.85, obstacle: false });
-  box(0.5, 0.7, 5.2, 53.7, 18, 0x8a7a4a, { y: 6.85, obstacle: false });
-  box(0.5, 0.7, 5.2, 58.3, 18, 0x8a7a4a, { y: 6.85, obstacle: false });
+  // rim on top. SLIM AND LOW enough that rifle fire from the ground clears
+  // the rim beyond ~13 units — inside that, his own parapet shadows a dead
+  // zone (hug the base: he can't see you, you can't hit him).
+  box(3.2, 4.6, 3.2, 56, 18, 0x6b4a26, { cover: true, rough: 0.7 });
+  box(3.4, 0.5, 0.4, 56, 16.6, 0x8a7a4a, { y: 4.85, obstacle: false });
+  box(3.4, 0.5, 0.4, 56, 19.4, 0x8a7a4a, { y: 4.85, obstacle: false });
+  box(0.4, 0.5, 3.4, 54.6, 18, 0x8a7a4a, { y: 4.85, obstacle: false });
+  box(0.4, 0.5, 3.4, 57.4, 18, 0x8a7a4a, { y: 4.85, obstacle: false });
 
   // --- LIVING ROOM furniture ---
   // Couch along the south wall — woven upholstery.
