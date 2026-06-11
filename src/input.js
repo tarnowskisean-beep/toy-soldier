@@ -11,7 +11,9 @@ export class Input {
     this.mouseDX = 0;                     // how far the mouse moved this frame (x)
     this.mouseDY = 0;                     // ...and y. Reset to 0 after each frame.
     this.firing = false;                  // is the left mouse button held?
-    this.aiming = false;                  // is the right mouse button held? (hold abilities)
+    this.aiming = false;                  // sights up? (RMB: tap = toggle, hold = hold)
+    this._rmbDownAt = 0;
+    this._rmbTurningOff = false;
     this.locked = false;                  // do we currently own the mouse (pointer lock)?
     this.debugLock = false;               // dev: lets automation drive the game without pointer lock
 
@@ -35,14 +37,30 @@ export class Input {
       this.mouseDY += e.movementY;
     });
 
-    // --- firing (left button) and hold-abilities (right button) ---
+    // --- firing (left button) and aiming (right button) ---
+    // Aiming is a SMART TOGGLE: tap RMB to raise the sights (they STAY up so
+    // you can left-click to fire — vital on trackpads, where you physically
+    // can't hold right and click left at once), tap again to lower. Mouse
+    // users who HOLD RMB get classic hold-to-aim: a long press lowers the
+    // sights on release.
     window.addEventListener('mousedown', (e) => {
       if (e.button === 0) this.firing = true;
-      if (e.button === 2) this.aiming = true;
+      if (e.button === 2) {
+        if (!this.aiming) {
+          this.aiming = true;
+          this._rmbDownAt = performance.now();
+          this._rmbTurningOff = false;
+        } else {
+          this._rmbTurningOff = true;
+        }
+      }
     });
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this.firing = false;
-      if (e.button === 2) this.aiming = false;
+      if (e.button === 2) {
+        if (this._rmbTurningOff) this.aiming = false;
+        else if (performance.now() - this._rmbDownAt > 350) this.aiming = false;
+      }
     });
     // Don't pop the browser's right-click menu over the game.
     window.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -51,6 +69,11 @@ export class Input {
     // When the browser grants/releases the mouse, update our `locked` flag.
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this._dom;
+      // Losing the mouse drops the trigger and the sights — no ghost inputs.
+      if (!this.locked) {
+        this.firing = false;
+        this.aiming = false;
+      }
     });
   }
 
