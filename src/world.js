@@ -118,7 +118,10 @@ function buildHouse() {
   const bounds = { minX: -6.5 * WS, maxX: 153.5 * WS, minZ: -45 * WS, maxZ: 45 * WS };
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x232c40);            // dusk through the windows
-  scene.fog = new THREE.Fog(0x232c40, 180, 475);
+  // REVEAL FOG, N64-style: the house fades into dusk murk at room scale, so
+  // the next pocket materializes as you walk toward it. (The tactical map
+  // bypasses this — see fogCfg.)
+  scene.fog = new THREE.Fog(0x232c40, 30, 110);
 
   // --- Lighting: a SUNSET pouring through the west window + sky bounce + lamps.
   // Layered warm/cool light is what separates a lit set from a flat tech demo.
@@ -243,6 +246,26 @@ function buildHouse() {
   obstacles.push(new THREE.Box3(new THREE.Vector3(-7 * WS, 0, -11 * WS), new THREE.Vector3(-2 * WS, 4 * WS, -7 * WS)));
   coverPoints.push(new THREE.Vector3(-0.5 * WS, 0, -9 * WS), new THREE.Vector3(-4.5 * WS, 0, -5.5 * WS));
   box(1.3, 1.3, 1.3, 1.5, 7.5, 0x7a4a22, { cover: true });            // salvaged crate
+
+  // --- VISION BREAKS: the furniture masses that turn the living room from an
+  // arena into CANYONS. From the crash pocket you see walls and cardboard, not
+  // the occupation — every pocket is discovered by walking into it. ---
+  // The giant moving box, east of the wreck: the spawn pocket's wall.
+  box(16, 9, 12, 13, -15, 0xb08a52, { rough: 0.9 });
+  // An armchair shoved off the rug — back and arms tower over a toy soldier.
+  box(9, 4.2, 8, 18, -2, 0x4a566a, { cover: true });               // seat
+  box(9, 8.5, 2.2, 18, 1.6, 0x4a566a);                             // back
+  box(2.2, 5.6, 8, 13.9, -2, 0x4a566a);                            // arm
+  box(2.2, 5.6, 8, 22.1, -2, 0x4a566a);                            // arm
+  // Stacked toy-block towers split the rug from the north lane.
+  box(4.5, 6.5, 4.5, 27, 11, 0x9a1812, { cover: true, rough: 0.35 });
+  box(4, 5, 4, 31.5, 14, 0x1a3a9a, { cover: true, rough: 0.35 });
+  // A wall of stacked books shadows the east blocks (the sniper's pocket).
+  box(7, 4.2, 2.6, 44, 9, 0x6e1c18, { cover: true });
+  // Board-game boxes divide the rug from the couch-front lane.
+  box(12, 5.5, 8, 33, -22, 0xc2543a, { rough: 0.6 });
+  // A magazine tower makes the hallway approach a corner, not a corridor.
+  box(5, 7, 5, 60, -6, 0xd8cfae, { cover: true, rough: 0.7 });
 
   // --- LIVING ROOM furniture ---
   // Couch along the south wall — woven upholstery.
@@ -423,6 +446,7 @@ function buildHouse() {
     scene, obstacles, coverPoints, bounds, nav,
     exit, exitGlow: glow, supplies, radio,
     map: { x: 103, height: 162 },     // tactical-view camera for this floor plan
+    fogCfg: { near: 30, far: 110 },   // the chase-cam reveal fog (map bypasses)
   };
 }
 

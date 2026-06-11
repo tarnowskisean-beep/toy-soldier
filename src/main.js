@@ -378,6 +378,12 @@ let camDist = CAM_DISTANCE;
 let aimT = 0;   // 0 = chase camera, 1 = over-the-shoulder aim camera
 
 function placeCamera(dt = 0) {
+  // The reveal fog is for eyes at soldier height — the tactical map reads
+  // the whole floor plan, so it sees through it.
+  if (scene.fog && world.fogCfg) {
+    scene.fog.near = mapMode ? 9000 : world.fogCfg.near;
+    scene.fog.far = mapMode ? 10000 : world.fogCfg.far;
+  }
   if (mapMode) {
     // Tactical map: straight down over the house. Enemies you haven't met stay
     // hidden — the map shows squad intel, not omniscience.
@@ -474,14 +480,14 @@ function takedownCandidate() {
 
 function handleTakedown() {
   const cand = takedownCandidate();
-  takedownEl.classList.toggle('show', !!cand);
+  takedownEl.classList.toggle('show', !!cand && !mapMode);
   if (cand && input.consume('KeyE')) {
     enemies.takedown(cand, squad.active.position);
     sfx.takedown();
   }
   // Tucked behind low cover: remind the player the wall works both ways.
   const a = squad.active;
-  peekEl.classList.toggle('show', a.alive && a.coverNear && !a.aiming && !cand);
+  peekEl.classList.toggle('show', !mapMode && a.alive && a.coverNear && !a.aiming && !cand);
 }
 
 function handleAbility(aim) {
