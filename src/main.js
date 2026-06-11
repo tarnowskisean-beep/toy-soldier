@@ -317,7 +317,7 @@ function tick(dt) {
     }
     if (input.consume('KeyF')) squad.orderFollow();
     if (input.consume('KeyH')) squad.orderHold();
-    if (input.consume('KeyC')) squad.active.crouched = !squad.active.crouched;
+    if (input.consume('KeyC')) squad.active.toggleCover();
     if (input.consume('KeyM')) mapMode = !mapMode;
     if (input.consume('KeyR')) squad.active.startReload();
 
@@ -485,9 +485,15 @@ function handleTakedown() {
     enemies.takedown(cand, squad.active.position);
     sfx.takedown();
   }
-  // Tucked behind low cover: remind the player the wall works both ways.
+  // Cover affordances: offer the snap when you're near it, the pop when
+  // you're in it.
   const a = squad.active;
-  peekEl.classList.toggle('show', !mapMode && a.alive && a.coverNear && !a.aiming && !cand);
+  const showPop = !mapMode && a.alive && a.inCover && !a.aiming && !cand;
+  const showTake = !mapMode && a.alive && !a.inCover && a.coverNear && !a.aiming && !cand;
+  if (showPop || showTake) {
+    peekEl.textContent = showPop ? 'RMB  POP OUT' : 'C  TAKE COVER';
+  }
+  peekEl.classList.toggle('show', showPop || showTake);
 }
 
 function handleAbility(aim) {

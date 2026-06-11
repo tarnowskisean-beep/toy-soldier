@@ -45,39 +45,32 @@ export const MISSIONS = [
       { type: 'escape', holdSeconds: 4,
         toast: 'BREACH THE FRONT DOOR — hold the doormat' },
     ],
-    // The tan occupation, ~26 men. facing is radians (atan2(x, z) style).
+    // The tan occupation, 17 men — ONE designed problem per pocket, with
+    // space between fights. facing is radians (atan2(x, z) style).
     enemyLayout: [
-      // LIVING ROOM — posts guarding the downed squadmates + the old furniture line.
-      { x: 12, z: -26, facing: 2.55 },                                  // couch post A (over the Heavy)
-      { x: 21, z: -29, facing: -2.11 },                                 // couch post B
-      { x: 24.5, z: -4, facing: 0.05 },                                 // table outpost A (over the Medic)
-      { x: 32.5, z: 9.5, facing: -1.29 },                               // table outpost B
+      // LIVING ROOM — a guard at each downed squadmate, a book-stack post,
+      // a roaming scout, and the door guard.
+      { x: 12, z: -26, facing: 2.55 },                                  // couch guard (over the Heavy)
+      { x: 32.5, z: 9.5, facing: -1.29 },                               // table outpost (over the Medic)
       { x: 49, z: 20, facing: 2.68 },                                   // block post (over the Sniper)
-      { x: 38, z: 22, facing: -2.3 },                                   // ottoman watch
       { x: 45.5, z: -16.5, facing: -1.8 },                              // book-stack post
-      { x: 69.5, z: 18, facing: -Math.PI / 2 },                         // hallway-door guard
       { x: 53, z: -27, facing: -Math.PI / 2, type: 'scout', patrol: { x: 23, z: -22 } },  // rug-lane scout
-      { x: 60, z: 6, facing: 2.0, type: 'scout', patrol: { x: 46, z: 26 } },              // block-lane scout
-      { x: 33, z: -36, facing: 1.6, type: 'scout', patrol: { x: 62, z: -33 } },           // couch-front scout
-      // HALLWAY — sentry + corridor scout + console post.
+      { x: 69.5, z: 18, facing: -Math.PI / 2 },                         // hallway-door guard
+      // HALLWAY — a sentry + the corridor scout.
       { x: 85, z: -13, facing: -1.2 },
       { x: 84.5, z: 30, facing: Math.PI, type: 'scout', patrol: { x: 84.5, z: -36 } },
-      { x: 90, z: -2, facing: 3.1 },                                    // console post (over the supply drop)
-      // KITCHEN — gunner at the table + two rifles.
+      // KITCHEN — gunner at the table + a rifle over the supply drop.
       { x: 123, z: -27, facing: -Math.PI / 2, type: 'gunner' },
-      { x: 108, z: -35, facing: -1.0 },
-      { x: 136, z: -30, facing: -2.55 },                                // deep post (over the supply drop)
-      // STUDY — the radio room: gunner guard + desk post + door watch + scout.
+      { x: 136, z: -30, facing: -2.55 },
+      // STUDY — the radio room: gunner guard + desk post + scout.
       { x: 131, z: 25, facing: -1.57, type: 'gunner' },                 // radio guard
       { x: 122, z: 26, facing: -Math.PI / 2 },
-      { x: 105, z: 38, facing: 2.6 },
       { x: 118, z: 40, facing: -2.4, type: 'scout', patrol: { x: 98, z: 24 } },
       // FOYER GARRISON — the fight you can't skip, dug in at the front door.
       { x: 80, z: 39, facing: Math.PI, type: 'gunner' },
       { x: 89, z: 39.5, facing: Math.PI, type: 'gunner' },
       { x: 84.5, z: 43.5, facing: Math.PI },
       { x: 78, z: 43, facing: 2.6 },
-      { x: 91, z: 43, facing: -2.6 },
     ],
     // The porch reserve — exists only if a runner reaches the radio.
     reserve: [

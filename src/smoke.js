@@ -33,7 +33,7 @@ export function runSmoke() {
     $('deployBtn').click();
     g.input.debugLock = true;
     g.step(5);
-    check('26 tan spawned', g.enemies.list.length === 26);
+    check('17 tan spawned', g.enemies.list.length === 17);
     check('3 squadmates crash-downed', g.squad.members.filter((m) => m.crashDowned).length === 3);
     check('regroup objective shown', $('objective').textContent.includes('FIND YOUR SQUAD'));
 

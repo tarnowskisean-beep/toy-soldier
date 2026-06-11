@@ -61,8 +61,11 @@ export class Soldier {
     this.zoomed = false;     // Sniper: aiming = scoped
     this.aiming = false;     // RMB held: shoulder the rifle — steady, slow, zoomed
     this.crouched = false;   // C toggles: slower, tighter aim, harder to spot
-    this.peeking = false;    // crouched behind low cover + aiming = popped out
-    this.coverNear = false;  // low cover within reach ahead (drives the hint)
+    this.peeking = false;    // in cover + aiming = popped out over it
+    this.coverNear = false;  // snappable cover nearby (drives the hint)
+    this.inCover = false;    // attached to a cover face (C to enter/exit)
+    this.coverBox = null;    // the obstacle we're hugging
+    this.coverSide = null;   // which face: 'px' | 'nx' | 'pz' | 'nz'
     this.sprinting = false;  // Shift held: fast, loud, easy to spot, wild aim
 
     // AI state
@@ -151,23 +154,50 @@ export class Soldier {
     this.figure.userData.animate(this._walkPhase, this._animAmp);
   }
 
-  // Is there knee-high cover within arm's reach of where I'm facing? That's
-  // what you can pop out over.
-  _lowCoverAhead() {
-    const px = this.position.x + Math.sin(this.yaw) * 1.4;
-    const pz = this.position.z + Math.cos(this.yaw) * 1.4;
+  // Find the nearest pop-over-able cover face (top between knee and chest)
+  // in ANY direction within reach. Returns { box, side, dist } or null.
+  _findCoverFace(radius = 2.4) {
+    let best = null;
     for (const b of this.obstacles) {
-      if (b.max.y < 0.7 || b.max.y > 1.5) continue;
-      if (px > b.min.x - 0.5 && px < b.max.x + 0.5 &&
-          pz > b.min.z - 0.5 && pz < b.max.z + 0.5) return true;
+      if (b.max.y < 0.7 || b.max.y > 1.45) continue;
+      // Distance from us to the box (0 if overlapping its footprint).
+      const dx = Math.max(b.min.x - this.position.x, 0, this.position.x - b.max.x);
+      const dz = Math.max(b.min.z - this.position.z, 0, this.position.z - b.max.z);
+      const d = Math.hypot(dx, dz);
+      if (d > radius || (best && d >= best.dist)) continue;
+      // Which face are we off of? The dominant axis of separation.
+      let side;
+      if (dx >= dz) side = this.position.x > b.max.x ? 'px' : 'nx';
+      else side = this.position.z > b.max.z ? 'pz' : 'nz';
+      best = { box: b, side, dist: d };
     }
-    return false;
+    return best;
+  }
+
+  // C near cover = TAKE COVER (snap + crouch). C in cover = stand back up.
+  // C in the open = plain crouch toggle, as always.
+  toggleCover() {
+    if (this.inCover) {
+      this.inCover = false;
+      this.coverBox = null;
+      this.crouched = false;
+      return;
+    }
+    const face = this._findCoverFace();
+    if (face) {
+      this.inCover = true;
+      this.coverBox = face.box;
+      this.coverSide = face.side;
+      this.crouched = true;
+    } else {
+      this.crouched = !this.crouched;
+    }
   }
 
   // ---------- PLAYER control ----------
   _controlPlayer(input, dt) {
-    this.coverNear = this.crouched && this._lowCoverAhead();
-    this.peeking = this.coverNear && this.aiming;
+    this.coverNear = !this.inCover && !!this._findCoverFace();
+    this.peeking = this.inCover && this.aiming;
     // Sights slow the mouse for fine aim (the scope, even more).
     const sens = MOUSE_SENS * (this.zoomed ? 0.4 : this.aiming ? 0.65 : 1);
     this.yaw -= input.mouseDX * sens;
@@ -184,6 +214,43 @@ export class Soldier {
     if (input.isDown('KeyA')) { mx -= this._r.x; mz -= this._r.z; }
 
     const len = Math.hypot(mx, mz);
+
+    // --- IN COVER: sticky. A/D slide along the face; pushing straight away
+    // (or sprinting) steps out; everything else stays glued. ---
+    if (this.inCover && this.coverBox) {
+      const b = this.coverBox;
+      const n = this.coverSide === 'px' ? [1, 0] : this.coverSide === 'nx' ? [-1, 0]
+              : this.coverSide === 'pz' ? [0, 1] : [0, -1];
+      if (len > 0) {
+        const ix = mx / len, iz = mz / len;
+        if (ix * n[0] + iz * n[1] > 0.75 || input.isDown('ShiftLeft')) {
+          this.inCover = false;            // stepped out — back to free movement
+          this.coverBox = null;
+          this.crouched = false;
+        } else {
+          const tx = -n[1], tz = n[0];     // the face's tangent
+          const slide = ix * tx + iz * tz;
+          const step = this.cls.speed * 0.5 * dt * slide;
+          moveBy(this.position, tx * step, tz * step, this.obstacles, 0.6, this.bounds);
+        }
+      }
+      if (this.inCover) {
+        this.sprinting = false;
+        // Glue to the hug line just off the face, clamped to its extent.
+        const k = Math.min(1, dt * 12);
+        if (n[0] !== 0) {
+          const hugX = (n[0] > 0 ? b.max.x : b.min.x) + n[0] * 0.62;
+          this.position.x += (hugX - this.position.x) * k;
+          this.position.z = Math.max(b.min.z - 0.2, Math.min(b.max.z + 0.2, this.position.z));
+        } else {
+          const hugZ = (n[1] > 0 ? b.max.z : b.min.z) + n[1] * 0.62;
+          this.position.z += (hugZ - this.position.z) * k;
+          this.position.x = Math.max(b.min.x - 0.2, Math.min(b.max.x + 0.2, this.position.x));
+        }
+        return;
+      }
+    }
+
     this.sprinting = len > 0 && input.isDown('ShiftLeft') && !this.crouched;
     if (len > 0) {
       let speed = this.cls.speed;
