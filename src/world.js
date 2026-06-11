@@ -351,6 +351,16 @@ function buildHouse() {
   lampShade.position.set(50 * WS, 12.2 * WS, -36 * WS); scene.add(lampShade);
   const lampLight = new THREE.PointLight(0xffc88a, 130, 64, 1.8);
   lampLight.position.set(50 * WS, 11 * WS, -36 * WS); scene.add(lampLight);
+  // The lamp is SHOOTABLE: kill the bulb and its corner goes dark — sentries
+  // in the pool lose reach. (Loud way to buy darkness.)
+  const floorLamp = {
+    alive: true,
+    pos: new THREE.Vector3(50 * WS, 0, -36 * WS),
+    bulbY: 11 * WS,
+    radius: 34,
+    light: lampLight,
+    shade: lampShade,
+  };
   obstacles.push(new THREE.Box3(
     new THREE.Vector3(48.9 * WS, 0, -36.6 * WS), new THREE.Vector3(50.9 * WS, 12 * WS, -35.4 * WS)));
 
@@ -444,7 +454,7 @@ function buildHouse() {
 
   return {
     scene, obstacles, coverPoints, bounds, nav,
-    exit, exitGlow: glow, supplies, radio,
+    exit, exitGlow: glow, supplies, radio, lamp: floorLamp,
     map: { x: 103, height: 162 },     // tactical-view camera for this floor plan
     fogCfg: { near: 30, far: 110 },   // the chase-cam reveal fog (map bypasses)
   };

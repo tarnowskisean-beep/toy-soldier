@@ -17,6 +17,9 @@ const MAT_ENEMY = new THREE.MeshBasicMaterial({ color: 0xff6a35 });
 const SPARK_GEO = new THREE.SphereGeometry(0.07, 4, 4);
 const SPARK_MAT = new THREE.MeshBasicMaterial({ color: 0xffc66a });
 
+const SHARD_GEO = new THREE.BoxGeometry(1, 1, 1);
+const MAX_RESTING_SHARDS = 90;   // debris stays on the floor, capped
+
 export class Bullets {
   constructor(scene, obstacles, bounds) {
     this.scene = scene;
@@ -25,7 +28,29 @@ export class Bullets {
     this.active = [];
     this.pool = [];
     this.sparks = [];
+    this.shards = [];
+    this.resting = [];     // shards that came to rest — the battlefield's litter
     this.onFire = null;    // hook: (origin, team) — audio + sentry hearing
+  }
+
+  // A toy soldier doesn't bleed — he SHATTERS. Burst of plastic shards,
+  // most fade, a few rest on the floor as debris.
+  shatter(pos, color = 0xcdb072) {
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.35 });
+    for (let i = 0; i < 11; i++) {
+      const m = new THREE.Mesh(SHARD_GEO, mat);
+      const s = 0.1 + Math.random() * 0.18;
+      m.scale.set(s, s, s * (0.6 + Math.random()));
+      m.position.set(pos.x, 0.6 + Math.random() * 1.1, pos.z);
+      m.castShadow = true;
+      this.scene.add(m);
+      this.shards.push({
+        m,
+        vx: (Math.random() - 0.5) * 16, vy: 3 + Math.random() * 9, vz: (Math.random() - 0.5) * 16,
+        rx: (Math.random() - 0.5) * 14, rz: (Math.random() - 0.5) * 14,
+        keep: Math.random() < 0.35,    // some shards become permanent debris
+      });
+    }
   }
 
   // A little burst of sparks where a round lands.
@@ -64,6 +89,25 @@ export class Bullets {
   }
 
   update(dt) {
+    for (let i = this.shards.length - 1; i >= 0; i--) {
+      const sh = this.shards[i];
+      sh.vy -= 26 * dt;
+      sh.m.position.x += sh.vx * dt;
+      sh.m.position.y += sh.vy * dt;
+      sh.m.position.z += sh.vz * dt;
+      sh.m.rotation.x += sh.rx * dt;
+      sh.m.rotation.z += sh.rz * dt;
+      if (sh.m.position.y <= 0.06) {
+        this.shards.splice(i, 1);
+        if (sh.keep) {
+          sh.m.position.y = 0.06;
+          this.resting.push(sh.m);
+          if (this.resting.length > MAX_RESTING_SHARDS) this.scene.remove(this.resting.shift());
+        } else {
+          this.scene.remove(sh.m);
+        }
+      }
+    }
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const sp = this.sparks[i];
       sp.life -= dt;

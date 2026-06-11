@@ -13,6 +13,7 @@ import { MISSIONS, missionById } from './missions.js';
 import { MissionRunner } from './mission.js';
 import { hasLineOfSight, segBoxEntryT } from './physics.js';
 import { sfx } from './audio.js';
+import { barks, pick } from './barks.js';
 
 // --- Renderer + camera ---
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -56,6 +57,11 @@ bullets.onFire = (origin, team) => {
   // EVERY shot is loud — your AI squadmates' fire wakes sentries exactly
   // like yours does. One noise rule, no silent exceptions.
   enemies.hearGunshot(origin);
+};
+let shake = 0;
+grenades.onBoom = (pos) => {
+  sfx.boom(pos.distanceTo(squad.active.position));
+  shake = Math.min(1, shake + Math.max(0.2, 1.1 - pos.distanceTo(squad.active.position) / 45));
 };
 window.game = { scene, camera, squad, bullets, enemies, grenades, input, world };
 
@@ -312,11 +318,11 @@ function tick(dt) {
     const aim = getAim();
     crosshair.classList.toggle('enemy', !!aim.enemy);
     if (input.consume('KeyQ')) {
-      if (aim.enemy) squad.orderAttack(aim.enemy);
-      else squad.orderMove(aim.point.clone());
+      if (aim.enemy) { squad.orderAttack(aim.enemy); orderBark('Engaging!'); }
+      else { squad.orderMove(aim.point.clone()); orderBark('Moving!'); }
     }
-    if (input.consume('KeyF')) squad.orderFollow();
-    if (input.consume('KeyH')) squad.orderHold();
+    if (input.consume('KeyF')) { squad.orderFollow(); orderBark('On you!'); }
+    if (input.consume('KeyH')) { squad.orderHold(); orderBark('Holding!'); }
     if (input.consume('KeyC')) squad.active.toggleCover();
     if (input.consume('KeyM')) mapMode = !mapMode;
     if (input.consume('KeyR')) squad.active.startReload();
@@ -335,6 +341,8 @@ function tick(dt) {
     muzzleLight.intensity *= Math.pow(0.0001, dt);   // fast falloff
     grenades.update(dt, enemies);
     bullets.update(dt);
+    barks.update(dt);
+    checkLampHit();
     enemies.update(dt, squad, bullets);
     squad.takeBulletHits(bullets);
 
@@ -435,6 +443,13 @@ function placeCamera(dt = 0) {
   camDist = want < camDist ? want : camDist + (want - camDist) * Math.min(1, dt * 5);
 
   camera.position.set(tx + dx * camDist, ty + dy * camDist, tz + dz * camDist);
+  // Explosions rattle the lens.
+  if (shake > 0.005) {
+    camera.position.x += (Math.random() - 0.5) * shake * 0.7;
+    camera.position.y += (Math.random() - 0.5) * shake * 0.5;
+    camera.position.z += (Math.random() - 0.5) * shake * 0.7;
+    shake *= Math.pow(0.01, dt);
+  }
   camera.lookAt(tx, ty, tz);
 
   // A soldier between you and the lens goes ghost-transparent — you should
@@ -451,6 +466,37 @@ function placeCamera(dt = 0) {
     for (const mat of m.figure.userData.fadeMats) {
       mat.transparent = op < 1;
       mat.opacity = op;
+    }
+  }
+}
+
+// An order ack from one living squadmate — the squad TALKS back.
+function orderBark(text) {
+  for (let i = 0; i < squad.members.length; i++) {
+    if (i === squad.activeIndex || !squad.members[i].alive) continue;
+    barks.say(squad.members[i].figure, text, '#9fe89f');
+    return;
+  }
+}
+
+// The floor lamp is a TARGET: kill the bulb, darken the corner — sentries in
+// the pool lose reach (the shot itself is as loud as any other).
+function checkLampHit() {
+  const lamp = world.lamp;
+  if (!lamp || !lamp.alive) return;
+  for (const b of bullets.active) {
+    if (b.team !== 'player') continue;
+    const dx = b.mesh.position.x - lamp.pos.x;
+    const dy = b.mesh.position.y - lamp.bulbY;
+    const dz = b.mesh.position.z - lamp.pos.z;
+    if (dx * dx + dy * dy + dz * dz < 3.2 * 3.2) {
+      lamp.alive = false;
+      lamp.light.intensity = 0;
+      lamp.shade.material.emissiveIntensity = 0;
+      sfx.glass();
+      bullets.burst(b.mesh.position);
+      bullets.retireBullet(b);
+      return;
     }
   }
 }

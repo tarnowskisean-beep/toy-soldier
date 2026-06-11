@@ -12,6 +12,7 @@ import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
 import { navStep } from './navgrid.js';
 import { sfx } from './audio.js';
+import { barks, pick } from './barks.js';
 
 // One brain, three bodies. RIFLEMAN holds his post and fights from cover.
 // SCOUT is fast and frail — spooked, he RUNS FOR THE RADIO instead of
@@ -81,6 +82,7 @@ export class Enemies {
     this.firstSpotted = false;     // drops the UNDETECTED tag
     this.hitFlash = 0;             // >0 briefly when a player bullet lands (HUD hitmarker)
     this.radio = null;             // the tan field radio (mission wires it up)
+    this.lamp = null;              // the floor lamp (shoot it out = dark pocket)
     this.reserveLayout = null;     // who comes through the door if the alarm sounds
     this.alarmRaised = false;
     this._v = new THREE.Vector3();
@@ -121,6 +123,7 @@ export class Enemies {
         home: { x: spot.x, z: spot.z, facing: s.facing },   // the post he returns to
         lastKnown: new THREE.Vector3(),                      // where he THINKS you are
         hasIntel: false, searching: false, searchT: 0,
+        panicT: 0, panicFrom: new THREE.Vector3(),           // GRENADE! scatter
         patrol: s.patrol ? { a: { x: spot.x, z: spot.z }, b: { ...s.patrol }, toB: true } : null,
       });
     }
@@ -153,6 +156,9 @@ export class Enemies {
     if (e.alerted) return;
     e.alerted = true;
     e.alertFlash = 2.2;
+    if (Math.random() < 0.65) {
+      barks.say(e.fig, pick(['INTRUDERS!', 'CONTACT!', 'GREENS — HERE!']), '#ffd23d');
+    }
     this.firstSpotted = true;
     this.combatStarted = true;
     // Shout: wake nearby friends and point them the same way.
@@ -203,6 +209,17 @@ export class Enemies {
       const d = Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z);
       if (d < BLAST_HEAR) this.alert(e, pos);
       if (d < 10) e.suppressed = Math.max(e.suppressed, 1.0);
+    }
+  }
+
+  // A live grenade nearby: everyone who sees it screams and runs.
+  panicFrom(pos, radius) {
+    for (const e of this.list) {
+      if (Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) > radius) continue;
+      if (e.panicT <= 0) barks.say(e.fig, 'GRENADE!', '#ff6a50');
+      e.panicT = Math.max(e.panicT, 0.9);
+      e.panicFrom.set(pos.x, 0, pos.z);
+      this.alert(e, pos);
     }
   }
 
@@ -262,11 +279,11 @@ export class Enemies {
         }
       }
       if (e.hp <= 0) {
-        // Knocked flying like a swatted toy.
-        const dir = this._v.subVectors(e.pos, this._nearestSoldier(squad, e.pos)?.position || e.pos);
-        const len = Math.hypot(dir.x, dir.z) || 1;
-        this.dying.push({ fig: e.fig, t: 0, dx: dir.x / len, dz: dir.z / len, tip: Math.random() < 0.5 ? 1 : -1 });
-        e.fig.remove(e.tell);
+        // A LOUD kill SHATTERS the toy into plastic shards (takedowns slump
+        // a quiet corpse instead — the battlefield tells you how each died).
+        this._v.set(e.pos.x, 0, e.pos.z);
+        bullets.shatter(this._v);
+        this.scene.remove(e.fig);
         this.list.splice(i, 1);
         this.kills++;
         continue;
@@ -276,7 +293,17 @@ export class Enemies {
       e.stagger = Math.max(0, e.stagger - dt);
       e.alertFlash = Math.max(0, e.alertFlash - dt);
 
-      if (!e.alerted) {
+      if (e.panicT > 0) {
+        // GRENADE! Nothing else matters — scatter away from it.
+        e.panicT -= dt;
+        const dx = e.pos.x - e.panicFrom.x, dz = e.pos.z - e.panicFrom.z;
+        const d = Math.hypot(dx, dz) || 1;
+        moveBy(e.pos, (dx / d) * e.speed * 1.35 * dt, (dz / d) * e.speed * 1.35 * dt,
+               this.obstacles, 0.6, this.bounds);
+        e.fig.position.copy(e.pos);
+        e.facing = Math.atan2(dx, dz);
+        e.fig.rotation.y = e.facing;
+      } else if (!e.alerted) {
         e.alertedFor = 0;
         this._sentry(e, dt, squad);
       } else {
@@ -349,8 +376,14 @@ export class Enemies {
 
     // Watch the arc: nearest visible squad member in the cone. Sight checks
     // run at real heights — a crouched man can hide behind knee-high cover
-    // (but POPPING OUT over it counts as standing).
-    let seen = null, seenD = SIGHT_RANGE;
+    // (but POPPING OUT over it counts as standing). A sentry whose LAMP got
+    // shot out is squinting into the dark.
+    let sightR = SIGHT_RANGE;
+    if (this.lamp && !this.lamp.alive &&
+        Math.hypot(e.pos.x - this.lamp.pos.x, e.pos.z - this.lamp.pos.z) < this.lamp.radius) {
+      sightR *= 0.6;
+    }
+    let seen = null, seenD = sightR;
     const fx = Math.sin(e.facing), fz = Math.cos(e.facing);
     for (const m of squad.members) {
       if (!m.alive) continue;
@@ -366,7 +399,7 @@ export class Enemies {
       // Suspicion climbs QUADRATICALLY with proximity — being seen across the
       // room buys you a beat; being seen at conversation distance does not.
       const sneaking = seen.crouched && !seen.peeking;
-      const prox = 1 - seenD / SIGHT_RANGE;
+      const prox = 1 - seenD / sightR;
       let rate = AWARE_RATE * (0.15 + 1.7 * prox * prox);
       if (sneaking) rate *= 0.5;                             // sneaking works
       if (seen.sprinting) rate *= 1.8;                       // sprinting is LOUD
@@ -441,10 +474,12 @@ export class Enemies {
         }
       }
       if (arrived) {
+        if (!e.searching) barks.say(e.fig, pick(['Where did he go?', 'Come out, green…', 'I heard something.']), '#cdb072');
         e.searching = true;
         e.facing += dt * 1.4;            // scan the room
         e.searchT += dt;
         if (e.searchT > SEARCH_TIME) {   // nothing here — stand down, stay jumpy
+          barks.say(e.fig, pick(['Must have been nothing…', 'Rats, probably.']), '#9a8a6a');
           e.alerted = false;
           e.searching = false;
           e.searchT = 0;

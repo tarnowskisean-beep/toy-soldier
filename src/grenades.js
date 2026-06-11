@@ -25,6 +25,7 @@ export class Grenades {
     this.bounds = bounds;
     this.nades = [];
     this.flashes = [];
+    this.onBoom = null;    // hook(pos): screen shake + the BOOM
   }
 
   // Lob a grenade from `origin` toward world point `target`.
@@ -48,6 +49,9 @@ export class Grenades {
     // --- Move grenades, detect detonation ---
     for (let i = this.nades.length - 1; i >= 0; i--) {
       const n = this.nades[i];
+      // Anyone close to a live grenade screams and scatters — counterplay
+      // works both ways: a frag FLUSHES a dug-in post even when it misses.
+      enemies.panicFrom(n.mesh.position, 13);
       n.vel.y -= GRAVITY * dt;
       const p = n.mesh.position;
       const px = p.x, pz = p.z;
@@ -90,6 +94,7 @@ export class Grenades {
     }
     // BOOM travels: sentries far beyond the blast wake up and come looking.
     enemies.hearBlast(pos);
+    if (this.onBoom) this.onBoom(pos);
     // Visual flash.
     const mesh = new THREE.Mesh(FLASH_GEO,
       new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.9 }));

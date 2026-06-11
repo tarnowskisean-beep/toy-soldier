@@ -162,6 +162,45 @@ class Sfx {
     });
   }
 
+  // The BOOM: a grenade going off — deep noise slam + sub thump.
+  boom(dist = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const vol = Math.max(0.15, 1 - dist / 80);
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer(0.5);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 380;
+    const ng = this.ctx.createGain();
+    this._env(ng, t, 1.1 * vol, 0.45);
+    noise.connect(lp).connect(ng).connect(this.master);
+    noise.start(t);
+    const thump = this.ctx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(70, t);
+    thump.frequency.exponentialRampToValueAtTime(26, t + 0.3);
+    const tg = this.ctx.createGain();
+    this._env(tg, t, 0.9 * vol, 0.4);
+    thump.connect(tg).connect(this.master);
+    thump.start(t); thump.stop(t + 0.45);
+  }
+
+  // A lightbulb dying: three tiny glass tinks.
+  glass() {
+    if (!this.ctx) return;
+    [2600, 3400, 2100].forEach((f, i) => {
+      const t = this.ctx.currentTime + i * 0.04;
+      const o = this.ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = f;
+      const g = this.ctx.createGain();
+      this._env(g, t, 0.1, 0.05);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.07);
+    });
+  }
+
   // The tan field radio screaming for help: a two-tone siren burst.
   alarm() {
     if (!this.ctx) return;

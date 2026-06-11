@@ -10,6 +10,7 @@ import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
 import { navStep } from './navgrid.js';
 import { sfx } from './audio.js';
+import { barks } from './barks.js';
 
 const MOUSE_SENS = 0.0022;
 
@@ -108,6 +109,7 @@ export class Soldier {
     if (this.reloading > 0 || this.mag >= this.cls.mag || this.reserve <= 0) return;
     this.reloading = this.cls.reload;
     sfx.reload();
+    barks.say(this.figure, 'Reloading!', '#9fd8ff');
   }
 
   update(dt, ctx) {
@@ -328,6 +330,10 @@ export class Soldier {
       this.order = ORDER.FOLLOW;
       this.target = null;
     }
+
+    // Fighting from a standstill, an AI squadmate takes a knee — a smaller
+    // target that reads as a soldier, not a statue.
+    this.crouched = !!engage && !goal;
 
     // Engage: turn to the enemy and fire on cooldown — but only with a clear
     // shot. A crate between us and the target means we hold fire (and our own

@@ -10,6 +10,7 @@
 // blinks) and decides win/lose. Main asks it for status text each frame.
 
 import { sfx } from './audio.js';
+import { barks, pick } from './barks.js';
 
 const RESCUE_RANGE = 3.0;
 const RESCUE_TIME = 1.8;       // seconds beside a downed buddy to wake him
@@ -41,6 +42,7 @@ export class MissionRunner {
     this.startKills = enemies.kills;
     if (this.def.enemyLayout) enemies.spawnLayout(this.def.enemyLayout);
     enemies.radio = this.world.radio || null;
+    enemies.lamp = this.world.lamp || null;
     enemies.reserveLayout = this.def.reserve || null;
 
     // The crash threw them across the room. They lie where they landed.
@@ -117,6 +119,7 @@ export class MissionRunner {
         if (t + dt >= RESCUE_TIME) {
           m.revive(0.6);
           sfx.pickup();
+          barks.say(m.figure, pick(['On my feet — thanks!', 'Ow. Where are they?', 'Back in it!']), '#7dff7d');
           remaining--;
         }
       } else if (t > 0) {
