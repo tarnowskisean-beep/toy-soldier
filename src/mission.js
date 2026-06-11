@@ -218,6 +218,18 @@ export class MissionRunner {
     }
     const r = this.world.radio;
     if (r && r.alive) r.lamp.visible = Math.sin(this.t * 6) > -0.2;
+    // The wreck smolders: puffs rise, swell, thin out, recycle.
+    if (this.world.wreckSmoke) {
+      for (const puff of this.world.wreckSmoke) {
+        puff.t += 0.0021;
+        if (puff.t > 1) puff.t -= 1;
+        const k = puff.t;
+        puff.sp.position.y = 3 + k * 13;
+        puff.sp.position.x += Math.sin(this.t * 0.8 + k * 9) * 0.004;
+        puff.sp.scale.setScalar(2 + k * 5);
+        puff.sp.material.opacity = 0.32 * (1 - k);
+      }
+    }
   }
 
   statusText(enemies) {

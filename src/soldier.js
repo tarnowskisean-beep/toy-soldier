@@ -34,6 +34,7 @@ export class Soldier {
       rifleLength: classDef.rifleLength,
       bulky: classDef.bulky,
       marking: classDef.marking,
+      bandColor: classDef.ringColor,                  // helmet band = HUD color
     });
     scene.add(this.figure);
 

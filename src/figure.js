@@ -88,6 +88,12 @@ export function createFigure(color, opts = {}) {
   const dome = add(upper, ball(0.185), 0, 1.99, 0.03, 0, 0, 0, gear);
   dome.scale.set(1.06 * bw, 0.74, 1.12);
   add(upper, new THREE.CylinderGeometry(0.2, 0.215, 0.04, 14), 0, 1.925, 0.03, 0, 0, 0, gear);
+  // Class-colored helmet band — the in-world twin of the HUD ring color.
+  if (opts.bandColor) {
+    const bandMat = new THREE.MeshStandardMaterial({ color: opts.bandColor, roughness: 0.4 });
+    fadeMats.push(bandMat);
+    add(upper, new THREE.CylinderGeometry(0.195, 0.205, 0.06, 14), 0, 1.965, 0.03, 0, 0, 0, bandMat);
+  }
 
   // ---- ARMS + RIFLE: one assembly, stock at the shoulder. ----
   const armsRifle = new THREE.Group();

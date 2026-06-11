@@ -97,6 +97,51 @@ function wallTexture() {
   }, 14, 1.4);
 }
 
+// A classic wooden LETTER BLOCK face: bordered square, big serif letter.
+function blockTexture(letter, base) {
+  return canvasTex(128, (g, S) => {
+    g.fillStyle = base; g.fillRect(0, 0, S, S);
+    g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 7;
+    g.strokeRect(9, 9, S - 18, S - 18);
+    g.font = 'bold 74px Georgia, serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = 'rgba(255,255,255,0.92)';
+    g.fillText(letter, S / 2, S / 2 + 4);
+  });
+}
+
+// Corrugated cardboard with packing tape — the moving box.
+function cardboardTexture() {
+  return canvasTex(256, (g, S) => {
+    g.fillStyle = '#b08a52'; g.fillRect(0, 0, S, S);
+    for (let y = 0; y < S; y += 5) {
+      g.fillStyle = `rgba(120,86,40,${y % 10 ? 0.12 : 0.05})`;
+      g.fillRect(0, y, S, 2);
+    }
+    g.fillStyle = 'rgba(60,40,18,0.5)';
+    g.fillRect(0, S * 0.48, S, 4);                       // flap seam
+    g.fillStyle = 'rgba(214,200,170,0.85)';
+    g.fillRect(S * 0.42, 0, S * 0.16, S);                // packing tape
+    g.fillStyle = 'rgba(90,60,30,0.6)';
+    g.font = 'bold 30px monospace';
+    g.fillText('THIS WAY UP ↑', 14, S * 0.86);
+  }, 2, 2);
+}
+
+// A board-game lid: bright base, title bar, racing stripes.
+function gameBoxTexture() {
+  return canvasTex(256, (g, S) => {
+    g.fillStyle = '#c2543a'; g.fillRect(0, 0, S, S);
+    g.fillStyle = '#e8d8b0'; g.fillRect(S * 0.1, S * 0.16, S * 0.8, S * 0.22);
+    g.fillStyle = '#2a2f55';
+    g.font = 'bold 38px Arial Black, sans-serif';
+    g.textAlign = 'center';
+    g.fillText('BATTLE!', S / 2, S * 0.32);
+    g.fillStyle = '#caa24a'; g.fillRect(0, S * 0.62, S, S * 0.08);
+    g.fillStyle = '#2a2f55'; g.fillRect(0, S * 0.74, S, S * 0.05);
+  }, 1, 1);
+}
+
 function fabricTexture(base) {
   return canvasTex(128, (g, S) => {
     g.fillStyle = base; g.fillRect(0, 0, S, S);
@@ -121,11 +166,11 @@ function buildHouse() {
   // REVEAL FOG, N64-style: the house fades into dusk murk at room scale, so
   // the next pocket materializes as you walk toward it. (The tactical map
   // bypasses this — see fogCfg.)
-  scene.fog = new THREE.Fog(0x232c40, 30, 110);
+  scene.fog = new THREE.Fog(0x232c40, 38, 120);
 
   // --- Lighting: a SUNSET pouring through the west window + sky bounce + lamps.
   // Layered warm/cool light is what separates a lit set from a flat tech demo.
-  scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 1.3));
+  scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 1.42));
   const sun = new THREE.DirectionalLight(0xffb469, 1.75);
   sun.position.set(-84, 64, 25);            // low in the west — long warm shadows
   sun.castShadow = true;
@@ -142,14 +187,14 @@ function buildHouse() {
   // Box helper: mesh + (optionally) an axis-aligned obstacle + cover points.
   // Positions stretch by WS; the BODY scales too only for big furniture
   // (tall, or an elevated slab like a tabletop) — small props keep true size.
-  const box = (w, h, d, x, z, color, { y, obstacle = true, cover = false, rough = 0.85 } = {}) => {
+  const box = (w, h, d, x, z, color, { y, obstacle = true, cover = false, rough = 0.85, tex } = {}) => {
     const big = h >= 3 || (y !== undefined && y > 3);
     if (big) { w *= WS; h *= WS; d *= WS; }
     x *= WS; z *= WS;
     y = y !== undefined ? y * WS : h / 2;
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshStandardMaterial({ color, roughness: rough })
+      new THREE.MeshStandardMaterial(tex ? { map: tex, roughness: rough } : { color, roughness: rough })
     );
     mesh.position.set(x, y, z);
     mesh.castShadow = true;
@@ -229,6 +274,18 @@ function buildHouse() {
   wall(1, 18, 93, 37);                        // hall/east divider, north of study door (door z 20..28)
   wall(61.5, 1, 124.25, 0);                   // kitchen/study divider
 
+  // --- A CEILING: the single biggest "this is INSIDE a house" signal. The
+  // lamp pools glow on it; the tactical map hides it to see the floor plan.
+  const ceiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(165 * WS, 95 * WS),
+    // Faint self-light: a downward face never catches the sky bounce, and a
+    // pitch-black ceiling reads as a void again.
+    new THREE.MeshStandardMaterial({ color: 0xb0a695, roughness: 0.95, emissive: 0x191512 })
+  );
+  ceiling.rotation.x = Math.PI / 2;
+  ceiling.position.set(73.5 * WS, 12 * WS, 0);
+  scene.add(ceiling);
+
   // --- THE CRASH SITE: your green toy plane, nose into the floorboards ---
   const planeMat = new THREE.MeshStandardMaterial({ color: 0x3f8f3f, roughness: 0.5 });
   const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.6 * WS, 1.1 * WS, 9.5 * WS, 14), planeMat);
@@ -246,24 +303,51 @@ function buildHouse() {
   obstacles.push(new THREE.Box3(new THREE.Vector3(-7 * WS, 0, -11 * WS), new THREE.Vector3(-2 * WS, 4 * WS, -7 * WS)));
   coverPoints.push(new THREE.Vector3(-0.5 * WS, 0, -9 * WS), new THREE.Vector3(-4.5 * WS, 0, -5.5 * WS));
   box(1.3, 1.3, 1.3, 1.5, 7.5, 0x7a4a22, { cover: true });            // salvaged crate
+  // The crash SCORCH, broken debris, and a smoke column you can see across
+  // the room — a crash site, not parked furniture.
+  const scorch = new THREE.Mesh(
+    new THREE.CircleGeometry(8.5, 24),
+    new THREE.MeshBasicMaterial({ color: 0x0a0a0a, transparent: true, opacity: 0.5 })
+  );
+  scorch.rotation.x = -Math.PI / 2;
+  scorch.position.set(-4.5 * WS, 0.035, -9 * WS);
+  scene.add(scorch);
+  const planeDk = new THREE.MeshStandardMaterial({ color: 0x2f6b2f, roughness: 0.55 });
+  for (const [dx2, dz2, s2, ry2] of [[3.2, 2.5, 0.9, 0.7], [-1.5, 4.4, 0.7, 2.1], [5.5, -1.2, 0.6, 1.2], [1.8, -4.6, 0.8, 0.3]]) {
+    const deb = new THREE.Mesh(new THREE.BoxGeometry(s2 * 1.6, 0.25, s2), planeDk);
+    deb.position.set(-4.5 * WS + dx2 * WS, 0.13, -9 * WS + dz2 * WS);
+    deb.rotation.y = ry2;
+    deb.castShadow = true;
+    scene.add(deb);
+  }
+  const wreckSmoke = [];
+  for (let i = 0; i < 7; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      color: 0x8a8a8a, transparent: true, opacity: 0.3, depthWrite: false,
+    }));
+    sp.position.set(-4.5 * WS, 3, -9 * WS);
+    scene.add(sp);
+    wreckSmoke.push({ sp, t: i / 7 });
+  }
 
   // --- VISION BREAKS: the furniture masses that turn the living room from an
   // arena into CANYONS. From the crash pocket you see walls and cardboard, not
   // the occupation — every pocket is discovered by walking into it. ---
   // The giant moving box, east of the wreck: the spawn pocket's wall.
-  box(16, 9, 12, 13, -15, 0xb08a52, { rough: 0.9 });
+  box(16, 9, 12, 13, -15, 0xffffff, { rough: 0.9, tex: cardboardTexture() });
   // An armchair shoved off the rug — back and arms tower over a toy soldier.
-  box(9, 4.2, 8, 18, -2, 0x4a566a, { cover: true });               // seat
-  box(9, 8.5, 2.2, 18, 1.6, 0x4a566a);                             // back
-  box(2.2, 5.6, 8, 13.9, -2, 0x4a566a);                            // arm
-  box(2.2, 5.6, 8, 22.1, -2, 0x4a566a);                            // arm
+  const chairTex = fabricTexture('#56627a');
+  box(9, 4.2, 8, 18, -2, 0xffffff, { cover: true, rough: 0.95, tex: chairTex });   // seat
+  box(9, 8.5, 2.2, 18, 1.6, 0xffffff, { rough: 0.95, tex: chairTex });             // back
+  box(2.2, 5.6, 8, 13.9, -2, 0xffffff, { rough: 0.95, tex: chairTex });            // arm
+  box(2.2, 5.6, 8, 22.1, -2, 0xffffff, { rough: 0.95, tex: chairTex });            // arm
   // Stacked toy-block towers split the rug from the north lane.
-  box(4.5, 6.5, 4.5, 27, 11, 0x9a1812, { cover: true, rough: 0.35 });
-  box(4, 5, 4, 31.5, 14, 0x1a3a9a, { cover: true, rough: 0.35 });
+  box(4.5, 6.5, 4.5, 27, 11, 0xffffff, { cover: true, rough: 0.35, tex: blockTexture('T', '#9a1812') });
+  box(4, 5, 4, 31.5, 14, 0xffffff, { cover: true, rough: 0.35, tex: blockTexture('O', '#1a3a9a') });
   // A wall of stacked books shadows the east blocks (the sniper's pocket).
   box(7, 4.2, 2.6, 44, 9, 0x6e1c18, { cover: true });
   // Board-game boxes divide the rug from the couch-front lane.
-  box(12, 5.5, 8, 33, -22, 0xc2543a, { rough: 0.6 });
+  box(12, 5.5, 8, 33, -22, 0xffffff, { rough: 0.6, tex: gameBoxTexture() });
   // A magazine tower makes the hallway approach a corner, not a corridor.
   box(5, 7, 5, 60, -6, 0xd8cfae, { cover: true, rough: 0.7 });
 
@@ -296,12 +380,14 @@ function buildHouse() {
     box(1.0, 5.8, 1.0, lx, lz, 0x2b1709, { cover: true });
   // Ottoman anchoring the right lane.
   box(8, 3.4, 6, 43, 27, 0x3e4a5c, { cover: true });
-  // Toy blocks — bright plastic, man-high cover.
-  const blockCols = [0x9a1812, 0x1a3a9a, 0x9a7612];
+  // Toy blocks — classic LETTER BLOCKS, man-high cover.
+  const blockCss = ['#9a1812', '#1a3a9a', '#9a7612'];
+  const letterBlock = (s, x, z, i, opts = {}) =>
+    box(s, s, s, x, z, 0xffffff,
+        { cover: true, rough: 0.35, tex: blockTexture('ABCDEFGHJKLMNPRSTU'[i % 18], blockCss[i % 3]), ...opts });
   [[11, -10, 1.5], [15, 6.5, 1.7], [19.5, -17, 1.4], [17.5, 21, 1.55], [34.5, -7, 1.6],
    [39, 9, 1.35], [42, -21, 1.8], [47, 18, 1.5], [51, -9, 1.45], [24.5, -29, 1.6],
-   [54, 25, 1.4], [57, -24, 1.5]].forEach(([x, z, s], i) =>
-    box(s, s, s, x, z, blockCols[i % 3], { cover: true, rough: 0.35 }));
+   [54, 25, 1.4], [57, -24, 1.5]].forEach(([x, z, s], i) => letterBlock(s, x, z, i));
   // Books: flat scatter (visual) + a stacked pair (hard cover) + the shelf row.
   box(3.2, 0.5, 2.2, 19, 14, 0x6e1c18, { obstacle: false });
   box(3.0, 0.45, 2.1, 36, -15, 0x1c5a2a, { obstacle: false });
@@ -323,9 +409,9 @@ function buildHouse() {
   box(1.8, 0.5, 7, 90.5, -5, 0x2b1709, { y: 5.0, obstacle: false });
   box(1, 5, 1, 90.5, -7.8, 0x2b1709, { cover: true });
   box(1, 5, 1, 90.5, -2.2, 0x2b1709, { cover: true });
-  box(1.4, 1.4, 1.4, 81, -9, 0x9a1812, { cover: true, rough: 0.35 });
-  box(1.5, 1.5, 1.5, 87.5, 6, 0x1a3a9a, { cover: true, rough: 0.35 });
-  box(1.3, 1.3, 1.3, 82.5, 21, 0x9a7612, { cover: true, rough: 0.35 });
+  letterBlock(1.4, 81, -9, 12);
+  letterBlock(1.5, 87.5, 6, 13);
+  letterBlock(1.3, 82.5, 21, 14);
   box(3, 0.45, 2.1, 85.5, -25, 0x1c5a2a, { obstacle: false });
 
   // --- KITCHEN ---
@@ -334,7 +420,7 @@ function buildHouse() {
   for (const [lx, lz] of [[116.3, -25.2], [123.7, -25.2], [116.3, -20.8], [123.7, -20.8]])
     box(0.9, 6.4, 0.9, lx, lz, 0x2b1709, { cover: true });
   box(2.4, 3.8, 2.4, 106.5, -15, 0x2b1709, { cover: true });           // chair
-  box(1.5, 1.5, 1.5, 115, -9, 0x1a3a9a, { cover: true, rough: 0.35 });
+  letterBlock(1.5, 115, -9, 15);
   box(1.6, 2.3, 1.6, 129, -8, 0x5a2018, { cover: true });              // pot/barrel
   box(1.3, 1.4, 1.3, 138, -33, 0x7a4a22, { cover: true });
 
@@ -345,8 +431,8 @@ function buildHouse() {
   for (let b = 0; b < 3; b++)
     box(0.5, 3, 1.7, 112, 33 + b * 3, b % 2 ? 0x6e1c18 : 0x1c5a2a, { cover: true });
   box(2.8, 0.42, 2, 118, 15, 0x6e1c18, { obstacle: false });
-  box(1.6, 1.6, 1.6, 136, 12, 0x9a7612, { cover: true, rough: 0.35 });
-  box(1.3, 1.3, 1.3, 103, 26, 0x9a1812, { cover: true, rough: 0.35 });
+  letterBlock(1.6, 136, 12, 16);
+  letterBlock(1.3, 103, 26, 17);
 
   // --- SET DRESSING: the room has to feel LIVED IN ---
   // Floor lamp by the couch: pole, shade, and a warm pool of light.
@@ -373,6 +459,16 @@ function buildHouse() {
   };
   obstacles.push(new THREE.Box3(
     new THREE.Vector3(48.9 * WS, 0, -36.6 * WS), new THREE.Vector3(50.9 * WS, 12 * WS, -35.4 * WS)));
+
+  // A small table lamp warms the south-west corner (it was a black hole).
+  const cornerBase = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 2.6, 12),
+    new THREE.MeshStandardMaterial({ color: 0x3a2c1c, roughness: 0.5 }));
+  cornerBase.position.set(8 * WS, 1.3, -41 * WS); cornerBase.castShadow = true; scene.add(cornerBase);
+  const cornerShade = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.8, 2.2, 14, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0xf2dcae, roughness: 0.9, emissive: 0xffd9a0, emissiveIntensity: 0.5, side: THREE.DoubleSide }));
+  cornerShade.position.set(8 * WS, 3.6, -41 * WS); scene.add(cornerShade);
+  const cornerLight = new THREE.PointLight(0xffc88a, 55, 42, 1.8);
+  cornerLight.position.set(8 * WS, 3.4, -41 * WS); scene.add(cornerLight);
 
   // A second lamp glow in the study so the far rooms aren't pitch black.
   const studyLight = new THREE.PointLight(0xffc88a, 52, 45, 1.8);
@@ -471,8 +567,9 @@ function buildHouse() {
   return {
     scene, obstacles, coverPoints, bounds, nav,
     exit, exitGlow: glow, supplies, radio, lamp: floorLamp,
+    ceiling, wreckSmoke,
     map: { x: 103, height: 162 },     // tactical-view camera for this floor plan
-    fogCfg: { near: 30, far: 110 },   // the chase-cam reveal fog (map bypasses)
+    fogCfg: { near: 38, far: 120 },   // the chase-cam reveal fog (map bypasses)
   };
 }
 

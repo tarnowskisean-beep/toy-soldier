@@ -418,6 +418,7 @@ function placeCamera(dt = 0) {
     scene.fog.near = mapMode ? 9000 : world.fogCfg.near;
     scene.fog.far = mapMode ? 10000 : world.fogCfg.far;
   }
+  if (world.ceiling) world.ceiling.visible = !mapMode;   // the map sees the floor plan
   if (mapMode) {
     // Tactical map: straight down over the house. Enemies you haven't met stay
     // hidden — the map shows squad intel, not omniscience.
