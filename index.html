@@ -15,9 +15,33 @@
         text-shadow: 0 1px 3px rgba(0,0,0,0.55);
       }
 
-      #stats { position: absolute; top: 16px; left: 16px;
-        font-size: 16px; font-weight: bold; line-height: 1.5; color: #1b3a1b;
-        text-shadow: 0 1px 2px rgba(255,255,255,0.4); }
+      /* Class portrait chip — the Sarge's-Heroes face slot, top-left */
+      #portrait { position: absolute; top: 14px; left: 14px; display: flex;
+        align-items: center; gap: 10px; }
+      #portraitCv { width: 84px; height: 84px; border: 3px solid var(--pring, #7dff7d);
+        border-radius: 8px; background: rgba(8, 18, 8, 0.72);
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.6), 0 0 10px rgba(0,0,0,0.4); }
+      #portraitName { font-size: 17px; font-weight: bold; letter-spacing: 2px;
+        color: #eaffea; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+      #killsLine { font-size: 12px; letter-spacing: 1px; opacity: 0.85; margin-top: 3px; }
+
+      /* Vitals — health bar + weapon + ammo, top-right, chunky console style */
+      #vitals { position: absolute; top: 14px; right: 14px; text-align: right; }
+      #healthbar { width: 230px; height: 22px; border: 3px solid #eaffea; border-radius: 5px;
+        background: #4a1410; box-shadow: inset 0 2px 6px rgba(0,0,0,0.7), 0 0 10px rgba(0,0,0,0.4);
+        overflow: hidden; margin-left: auto; }
+      #healthfill { height: 100%; width: 100%; background: linear-gradient(#8aff7d, #3fae3f);
+        transition: width 0.15s linear; }
+      #healthfill.warn { background: linear-gradient(#ffd96a, #c08a2a); }
+      #healthfill.crit { background: linear-gradient(#ff7a5a, #a02818); }
+      #weaponrow { display: flex; align-items: center; justify-content: flex-end;
+        gap: 10px; margin-top: 8px; }
+      #weaponCv { width: 132px; height: 34px; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.7)); }
+      #ammoTop { font-family: "Arial Black", "Courier New", monospace; font-size: 26px;
+        color: #f1ffe9; text-shadow: 0 2px 5px rgba(0,0,0,0.85); min-width: 96px; }
+      #ammoTop.low { color: #ffb04d; }
+      #ammoTop.reloading { color: #9fd8ff; }
+      #ammoTop .reserve { font-size: 15px; opacity: 0.8; }
 
       /* Objective banner — top center */
       #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
@@ -65,13 +89,7 @@
       #ability.active { border-color: #ffd24d; color: #ffe9a8; box-shadow: 0 0 12px rgba(255,200,60,0.6); }
       #ability.cooldown { opacity: 0.4; }
 
-      /* Ammo readout: mag / reserve, right of the ability prompt */
-      #ammo { position: absolute; bottom: 92px; left: 50%; transform: translateX(calc(-50% + 150px));
-        font-size: 15px; font-weight: bold; letter-spacing: 2px; padding: 5px 12px;
-        border-radius: 5px; background: rgba(15, 30, 15, 0.62); border: 2px solid rgba(255,255,255,0.18);
-        min-width: 88px; text-align: center; }
-      #ammo.low { color: #ffb04d; border-color: rgba(255,176,77,0.7); }
-      #ammo.reloading { color: #9fd8ff; }
+      /* (Ammo lives in the top-right vitals block now.) */
 
       /* Damage direction: a red arc segment rotated toward the shooter */
       #dmgdir { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px;
@@ -146,13 +164,26 @@
 
       .hidden { display: none !important; }
     </style>
-    <script type="module" crossorigin src="./assets/index-uY8vtY1E.js"></script>
+    <script type="module" crossorigin src="./assets/index-CAwf3CjR.js"></script>
   </head>
   <body>
     <div id="scope"></div>
     <div id="vignette"></div>
     <div id="hud">
-      <div id="stats">TANGOS DOWN <span id="kills">0</span></div>
+      <div id="portrait">
+        <canvas id="portraitCv" width="84" height="84"></canvas>
+        <div>
+          <div id="portraitName">LEADER</div>
+          <div id="killsLine">TANGOS DOWN <span id="kills">0</span></div>
+        </div>
+      </div>
+      <div id="vitals">
+        <div id="healthbar"><div id="healthfill"></div></div>
+        <div id="weaponrow">
+          <canvas id="weaponCv" width="132" height="34"></canvas>
+          <div id="ammoTop"></div>
+        </div>
+      </div>
       <div id="objective" class="hidden"></div>
       <div id="toast"></div>
       <div id="crosshair"></div>
@@ -163,7 +194,6 @@
         <div id="cardMission">Mission 1 — CRASH SITE</div>
       </div>
       <div id="ability"></div>
-      <div id="ammo"></div>
       <div id="squad"></div>
 
       <!-- Mission select -->
