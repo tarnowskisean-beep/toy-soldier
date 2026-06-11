@@ -63,6 +63,35 @@
       #ability.active { border-color: #ffd24d; color: #ffe9a8; box-shadow: 0 0 12px rgba(255,200,60,0.6); }
       #ability.cooldown { opacity: 0.4; }
 
+      /* Ammo readout: mag / reserve, right of the ability prompt */
+      #ammo { position: absolute; bottom: 92px; left: 50%; transform: translateX(calc(-50% + 150px));
+        font-size: 15px; font-weight: bold; letter-spacing: 2px; padding: 5px 12px;
+        border-radius: 5px; background: rgba(15, 30, 15, 0.62); border: 2px solid rgba(255,255,255,0.18);
+        min-width: 88px; text-align: center; }
+      #ammo.low { color: #ffb04d; border-color: rgba(255,176,77,0.7); }
+      #ammo.reloading { color: #9fd8ff; }
+
+      /* Damage direction: a red arc segment rotated toward the shooter */
+      #dmgdir { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px;
+        transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
+        transition: opacity 0.12s linear; }
+      #dmgdir::before { content: ""; position: absolute; left: 50%; top: -6px; width: 56px; height: 18px;
+        transform: translateX(-50%); border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+        background: radial-gradient(ellipse at 50% 100%, transparent 40%, rgba(255,40,30,0.85) 41%); }
+
+      /* Stage banner under the objective line */
+      #toast { position: absolute; top: 58px; left: 50%; transform: translateX(-50%) translateY(-8px);
+        font-size: 14px; font-weight: bold; letter-spacing: 2px; padding: 6px 16px;
+        border-radius: 5px; background: rgba(20, 38, 18, 0.78); border: 2px solid rgba(140,255,140,0.35);
+        color: #cdf7cd; opacity: 0; transition: opacity 0.35s, transform 0.35s; white-space: nowrap; }
+      #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+      #vignette.pulse { animation: dmgpulse 0.45s ease-out; }
+      @keyframes dmgpulse {
+        0% { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
       #scope { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 0.12s;
         background: radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.85) 33%); }
       #scope::before { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 100vh; transform: translate(-50%,-50%); background: rgba(0,0,0,0.6); }
@@ -108,7 +137,7 @@
 
       .hidden { display: none !important; }
     </style>
-    <script type="module" crossorigin src="./assets/index-eg_mF0Ch.js"></script>
+    <script type="module" crossorigin src="./assets/index-CTgsZC9g.js"></script>
   </head>
   <body>
     <div id="scope"></div>
@@ -116,12 +145,15 @@
     <div id="hud">
       <div id="stats">TANGOS DOWN <span id="kills">0</span></div>
       <div id="objective" class="hidden"></div>
+      <div id="toast"></div>
       <div id="crosshair"></div>
+      <div id="dmgdir"></div>
       <div id="titlecard" class="hidden">
         <div id="cardCampaign">THE LONG WAY HOME</div>
         <div id="cardMission">Mission 1 — CRASH SITE</div>
       </div>
       <div id="ability"></div>
+      <div id="ammo"></div>
       <div id="squad"></div>
 
       <!-- Mission select -->
@@ -137,7 +169,7 @@
         <h1 id="briefName">MISSION</h1>
         <h2 id="briefSector">SECTOR</h2>
         <div class="row" id="briefText" style="margin-bottom:14px;"></div>
-        <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>CLICK</b> fire • <b>SHIFT</b> sprint • <b>C</b> crouch (sneak)</div>
+        <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>CLICK</b> fire • <b>R</b> reload • <b>SHIFT</b> sprint • <b>C</b> crouch (sneak)</div>
         <div class="row"><b>1–4 / TAB</b> switch soldier • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold</div>
         <div class="row"><b>RMB</b> scope/suppress • <b>SPACE</b> grenade/revive <i>(by class)</i> • <b>M</b> tactical map</div>
         <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>
