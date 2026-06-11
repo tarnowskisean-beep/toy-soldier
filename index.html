@@ -42,7 +42,10 @@
       #crosshair.hit::before, #crosshair.hit::after { background: #ff5a30; }
 
       #squad { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 10px; }
+        display: flex; gap: 10px; max-width: 96vw; flex-wrap: wrap; justify-content: center; }
+      @media (max-width: 1000px) {
+        #squad .card { width: 96px; padding: 6px 8px; }
+      }
       .card { width: 120px; padding: 8px 10px; border-radius: 6px;
         background: rgba(15, 30, 15, 0.62); border: 2px solid rgba(255,255,255,0.15);
         transition: border-color 0.1s, opacity 0.2s; }
@@ -105,7 +108,7 @@
 
       .hidden { display: none !important; }
     </style>
-    <script type="module" crossorigin src="./assets/index-Bgg7QAyZ.js"></script>
+    <script type="module" crossorigin src="./assets/index-eg_mF0Ch.js"></script>
   </head>
   <body>
     <div id="scope"></div>
@@ -124,7 +127,7 @@
       <!-- Mission select -->
       <div id="menu" class="screen">
         <h1>THE LONG WAY HOME</h1>
-        <h2>OPERATION PLASTIC STORM</h2>
+        <h2>SHOT DOWN. FAR FROM THE TOY STORE.</h2>
         <div id="missionList"></div>
         <div class="row" style="margin-top:10px; opacity:0.7;">Select a mission to deploy</div>
       </div>
