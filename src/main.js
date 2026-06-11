@@ -22,7 +22,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // Filmic color: the single biggest "engine demo → game" rendering switch.
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.3;
+renderer.toneMappingExposure = 1.45;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
@@ -68,7 +68,73 @@ const $ = (id) => document.getElementById(id);
 const menuEl = $('menu'), startEl = $('start'), winEl = $('win'), loseEl = $('gameover');
 const objectiveEl = $('objective'), crosshair = $('crosshair');
 const vignette = $('vignette'), abilityEl = $('ability'), scopeEl = $('scope');
-const ammoEl = $('ammo'), dmgdirEl = $('dmgdir'), takedownEl = $('takedown');
+const dmgdirEl = $('dmgdir'), takedownEl = $('takedown');
+const ammoTopEl = $('ammoTop'), healthfillEl = $('healthfill');
+const portraitCv = $('portraitCv'), weaponCv = $('weaponCv'), portraitNameEl = $('portraitName');
+
+// --- Class portrait: a little molded bust in the chip, Sarge's-Heroes style ---
+function drawPortrait(cls) {
+  const g = portraitCv.getContext('2d');
+  const W = portraitCv.width, H = portraitCv.height;
+  g.clearRect(0, 0, W, H);
+  const green = '#2f9e35', dark = '#1d6b24';
+  // shoulders
+  g.fillStyle = green;
+  g.beginPath(); g.moveTo(8, H); g.lineTo(16, 56); g.lineTo(W - 16, 56); g.lineTo(W - 8, H); g.closePath(); g.fill();
+  // head
+  g.fillStyle = green;
+  g.beginPath(); g.arc(W / 2, 42, 17, 0, Math.PI * 2); g.fill();
+  // helmet dome + brim
+  g.fillStyle = dark;
+  g.beginPath(); g.arc(W / 2, 36, 21, Math.PI, 0); g.fill();
+  g.fillRect(W / 2 - 23, 34, 46, 5);
+  // eyes: two dark notches under the brim
+  g.fillStyle = 'rgba(10,25,10,0.9)';
+  g.fillRect(W / 2 - 9, 44, 5, 3);
+  g.fillRect(W / 2 + 4, 44, 5, 3);
+  // class accent: ring-colored chin strap
+  g.strokeStyle = '#' + cls.ringColor.toString(16).padStart(6, '0');
+  g.lineWidth = 3;
+  g.beginPath(); g.arc(W / 2, 46, 19, 0.35, Math.PI - 0.35); g.stroke();
+}
+
+// --- Weapon silhouette: stock / receiver / barrel / mag, per class ---
+function drawWeapon(cls) {
+  const g = weaponCv.getContext('2d');
+  const W = weaponCv.width, H = weaponCv.height, mid = 16;
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = '#dff5dc';
+  const barrelLen = 34 + cls.rifleLength * 38;
+  const thick = cls.key === 'heavy' ? 7 : 4;
+  g.beginPath();                                   // stock
+  g.moveTo(6, mid - 5); g.lineTo(22, mid - 4); g.lineTo(22, mid + 6); g.lineTo(6, mid + 9);
+  g.closePath(); g.fill();
+  g.fillRect(22, mid - 6, 34, 12);                 // receiver
+  g.fillRect(56, mid - thick / 2, barrelLen, thick); // barrel
+  g.fillRect(30, mid + 6, 8, 10);                  // magazine
+  g.fillRect(24, mid - 9, 4, 4);                   // rear sight
+  if (cls.key === 'sniper') {                      // scope
+    g.beginPath(); g.arc(44, mid - 11, 5, 0, Math.PI * 2); g.fill();
+    g.fillRect(38, mid - 12, 12, 3);
+  }
+}
+
+let portraitKey = null;
+function updateVitals() {
+  const a = squad.active;
+  if (a.cls.key !== portraitKey) {
+    portraitKey = a.cls.key;
+    drawPortrait(a.cls);
+    drawWeapon(a.cls);
+    portraitNameEl.textContent = a.cls.name;
+    portraitCv.style.setProperty('--pring', '#' + a.cls.ringColor.toString(16).padStart(6, '0'));
+    portraitCv.style.borderColor = '#' + a.cls.ringColor.toString(16).padStart(6, '0');
+  }
+  const pct = Math.max(0, (a.health / a.maxHealth) * 100);
+  healthfillEl.style.width = pct + '%';
+  healthfillEl.classList.toggle('warn', pct <= 50 && pct > 25);
+  healthfillEl.classList.toggle('crit', pct <= 25);
+}
 
 const getUnlocked = () => parseInt(localStorage.getItem('ts_unlocked') || '1', 10);
 const setScreen = (s) => localStorage.setItem('ts_screen', s);
@@ -340,7 +406,7 @@ function placeCamera(dt = 0) {
   const side = 1.05 * aimT;                       // right-shoulder offset
   const rx = Math.cos(a.yaw), rz = -Math.sin(a.yaw);
 
-  const ty = a.position.y + (CAM_HEIGHT + (1.85 - CAM_HEIGHT) * aimT) * (a.crouched ? 0.7 : 1);
+  const ty = a.position.y + (CAM_HEIGHT + (2.05 - CAM_HEIGHT) * aimT) * (a.crouched ? 0.7 : 1);
   const tx = a.position.x + rx * side, tz = a.position.z + rz * side;
   const cp = Math.cos(a.pitch), sp = Math.sin(a.pitch);
   const dx = -Math.sin(a.yaw) * cp, dy = sp, dz = -Math.cos(a.yaw) * cp;
@@ -453,14 +519,15 @@ function updateZoom(dt) {
 function updateAmmoHUD() {
   const a = squad.active;
   if (a.reloading > 0) {
-    ammoEl.textContent = 'RELOADING…';
-    ammoEl.classList.add('reloading');
-    ammoEl.classList.remove('low');
+    ammoTopEl.innerHTML = '<span class="reserve">RELOADING…</span>';
+    ammoTopEl.classList.add('reloading');
+    ammoTopEl.classList.remove('low');
   } else {
-    ammoEl.textContent = `${a.mag} / ${a.reserve}`;
-    ammoEl.classList.remove('reloading');
-    ammoEl.classList.toggle('low', a.mag <= Math.ceil(a.cls.mag * 0.25));
+    ammoTopEl.innerHTML = `${a.mag}<span class="reserve"> / ${a.reserve}</span>`;
+    ammoTopEl.classList.remove('reloading');
+    ammoTopEl.classList.toggle('low', a.mag <= Math.ceil(a.cls.mag * 0.25));
   }
+  updateVitals();
 }
 
 // The red arc that says WHERE the hurt came from, and a pulse that says NOW.

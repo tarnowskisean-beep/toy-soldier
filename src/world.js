@@ -122,8 +122,8 @@ function buildHouse() {
 
   // --- Lighting: a SUNSET pouring through the west window + sky bounce + lamps.
   // Layered warm/cool light is what separates a lit set from a flat tech demo.
-  scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 1.12));
-  const sun = new THREE.DirectionalLight(0xffb469, 1.6);
+  scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 1.3));
+  const sun = new THREE.DirectionalLight(0xffb469, 1.75);
   sun.position.set(-84, 64, 25);            // low in the west — long warm shadows
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);

@@ -29,7 +29,7 @@ export class Soldier {
     this.nav = nav;
     this.bounds = bounds;
 
-    this.figure = createFigure(0x3f8f3f, {            // army green
+    this.figure = createFigure(0x2f9e35, {            // kelly green plastic
       rifleLength: classDef.rifleLength,
       bulky: classDef.bulky,
       marking: classDef.marking,
@@ -67,6 +67,12 @@ export class Soldier {
     this.order = ORDER.FOLLOW;
     this.orderPoint = new THREE.Vector3();   // destination for MOVE orders
     this.target = null;                      // enemy object for ATTACK orders
+
+    // Walk-cycle state: phase advances with ground covered, amp blends
+    // stance ↔ stride so stopping doesn't freeze mid-step.
+    this._walkPhase = 0;
+    this._animAmp = 0;
+    this._animPrev = new THREE.Vector3();
 
     // Reused scratch vectors (avoid per-frame allocation).
     this._f = new THREE.Vector3();
@@ -130,6 +136,13 @@ export class Soldier {
       const targetRy = this.aiming ? 0.02 : -0.14;
       rifle.rotation.y += (targetRy - rifle.rotation.y) * Math.min(1, dt * 10);
     }
+
+    // Drive the walk cycle from actual ground covered.
+    const moved = this.position.distanceTo(this._animPrev);
+    this._animPrev.copy(this.position);
+    this._walkPhase += moved * 2.6;
+    this._animAmp += ((moved > 0.004 ? 1 : 0) - this._animAmp) * Math.min(1, dt * 9);
+    this.figure.userData.animate(this._walkPhase, this._animAmp);
   }
 
   // ---------- PLAYER control ----------

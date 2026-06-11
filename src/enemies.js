@@ -93,7 +93,7 @@ export class Enemies {
   spawnLayout(layout) {
     for (const s of layout) {
       const T = TYPES[s.type || 'rifle'];
-      const fig = createFigure(0xc2a86a, T.fig);
+      const fig = createFigure(0xcdb072, T.fig);
       const spot = this.nav.nearestOpen(s.x, s.z);
       const pos = new THREE.Vector3(spot.x, 0, spot.z);
       fig.position.copy(pos);
@@ -282,6 +282,13 @@ export class Enemies {
         e.alertedFor += dt;
         this._fight(e, dt, squad, bullets);
       }
+
+      // Walk cycle from ground covered (patrols, hunts, repositions alike).
+      const mvd = Math.hypot(e.pos.x - (e._px ?? e.pos.x), e.pos.z - (e._pz ?? e.pos.z));
+      e._px = e.pos.x; e._pz = e.pos.z;
+      e.walkPhase = (e.walkPhase || 0) + mvd * 2.6;
+      e.animAmp = (e.animAmp || 0) + ((mvd > 0.004 ? 1 : 0) - (e.animAmp || 0)) * Math.min(1, dt * 9);
+      e.fig.userData.animate(e.walkPhase, e.animAmp);
 
       // --- Detection tell ---
       // "?" growing = a sentry getting suspicious. "!" = made. Steady "?" on
