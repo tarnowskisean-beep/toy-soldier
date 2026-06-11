@@ -7,6 +7,7 @@
 // AI, `BOUNDS` for the walkable rect, and `exit` for the breach objective.
 
 import * as THREE from 'three';
+import { NavGrid } from './navgrid.js';
 
 // Walkable interior (just inside the outer walls).
 export const BOUNDS = { minX: -6.5, maxX: 153.5, minZ: -45, maxZ: 45 };
@@ -106,7 +107,7 @@ export function createWorld() {
 
   // --- Lighting: a SUNSET pouring through the west window + sky bounce + lamps.
   // Layered warm/cool light is what separates a lit set from a flat tech demo.
-  scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 0.95));
+  scene.add(new THREE.HemisphereLight(0x46538a, 0x584432, 1.12));
   const sun = new THREE.DirectionalLight(0xffb469, 1.6);
   sun.position.set(-60, 46, 18);            // low in the west — long warm shadows
   sun.castShadow = true;
@@ -344,5 +345,9 @@ export function createWorld() {
   night.position.set(84.5, 5, 45);
   scene.add(night);
 
-  return { scene, obstacles, coverPoints, exit, exitGlow: glow };
+  // Bake the walkability grid AFTER all furniture is placed — every AI
+  // routes around the house with this.
+  const nav = new NavGrid(BOUNDS, obstacles);
+
+  return { scene, obstacles, coverPoints, exit, exitGlow: glow, nav };
 }

@@ -11,21 +11,27 @@ import { CLASSES, SQUAD_ORDER } from './classes.js';
 
 // Formation slots for the (up to 3) inactive members, RELATIVE to the leader:
 // x = left/right, z = forward/back (negative = behind). Rotated to face the
-// active soldier's heading each frame.
+// active soldier's heading each frame. A SIDE wedge, not a column — the chase
+// camera sits directly behind the leader, so a slot near x=0 is a soldier
+// standing in the lens.
 const SLOTS = [
-  { x: -2.8, z: -2.4 },
-  { x: 2.8, z: -2.4 },
-  { x: 0, z: -4.6 },
+  { x: -3.0, z: -1.4 },
+  { x: 3.0, z: -1.4 },
+  { x: -5.4, z: -3.0 },
 ];
 
-const MEDIC_HEAL_RATE = 9;   // hp/sec the medic restores to nearby squadmates
+const MEDIC_HEAL_RATE = 4;   // hp/sec near the medic — recovery, not a free refill
 const MEDIC_RANGE = 7;
 
 export class Squad {
-  constructor(scene, obstacles) {
+  constructor(scene, obstacles, nav) {
+    this.nav = nav;
     this.members = SQUAD_ORDER.map((key, i) => {
-      const s = new Soldier(scene, CLASSES[key], obstacles);
-      s.position.set(2.5 + i * 2.7, 0, -8 - (i % 2) * 2.6);   // rally EAST of the wreck
+      const s = new Soldier(scene, CLASSES[key], obstacles, nav);
+      // Rally EAST of the wreck — clamped to standable ground, because a spawn
+      // overlapping ANY furniture is a soldier that can never move.
+      const open = nav.nearestOpen(2.5 + i * 2.7, -8 - (i % 2) * 2.6);
+      s.position.set(open.x, 0, open.z);
       s.yaw = Math.PI / 2;                                     // facing into the room
       s.figure.position.copy(s.position);
       s.order = ORDER.FOLLOW;
@@ -65,7 +71,19 @@ export class Squad {
 
   // --- Orders apply to every OTHER living squadmate (not the one you control) ---
   orderMove(point) {
-    this._eachOther((m) => { m.order = ORDER.MOVE; m.orderPoint.copy(point); m.target = null; });
+    // Each man gets his own spot in a small wedge on the point (soldiers
+    // don't collide with each other — same destination = men standing inside
+    // each other). Clamped to standable ground: a click ON a crate means
+    // "go to the crate", not "merge with the crate".
+    const spots = [[0, 0], [1.8, 1.1], [-1.8, 1.1]];
+    let k = 0;
+    this._eachOther((m) => {
+      const o = spots[k++ % spots.length];
+      const open = this.nav.nearestOpen(point.x + o[0], point.z + o[1]);
+      m.order = ORDER.MOVE;
+      m.orderPoint.set(open.x, 0, open.z);
+      m.target = null;
+    });
   }
   orderAttack(enemy) {
     this._eachOther((m) => { m.order = ORDER.ATTACK; m.target = enemy; });
@@ -112,14 +130,17 @@ export class Squad {
     this.ring.visible = this.active.alive;
   }
 
-  // Turn the local SLOTS offsets into world positions behind the active soldier.
+  // Turn the local SLOTS offsets into world positions around the active
+  // soldier. A slot that lands inside furniture gets nudged to the nearest
+  // standable spot, so nobody is ever ordered INTO the couch.
   _worldSlots(a) {
     const cy = Math.cos(a.yaw), sy = Math.sin(a.yaw);
     return SLOTS.map((o) => {
       // right = (cos, -sin), forward = (sin, cos)
       const rx = o.x * cy + o.z * sy;
       const rz = -o.x * sy + o.z * cy;
-      return this._slot.clone().set(a.position.x + rx, 0, a.position.z + rz);
+      const open = this.nav.nearestOpen(a.position.x + rx, a.position.z + rz);
+      return this._slot.clone().set(open.x, 0, open.z);
     });
   }
 
@@ -145,7 +166,8 @@ export class Squad {
       for (const m of this.members) {
         if (!m.alive) continue;
         const dx = b.mesh.position.x - m.position.x;
-        const dy = b.mesh.position.y - (m.position.y + 1.1);   // torso height
+        // Torso height — crouching genuinely lowers you under chest-high fire.
+        const dy = b.mesh.position.y - (m.position.y + (m.crouched ? 0.75 : 1.1));
         const dz = b.mesh.position.z - m.position.z;
         if (dx * dx + dy * dy + dz * dz < 0.9 * 0.9) {
           m.takeDamage(b.damage);

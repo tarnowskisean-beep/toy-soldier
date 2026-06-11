@@ -42,6 +42,8 @@ export class Grenades {
     this.nades.push({ mesh, vel: new THREE.Vector3(dx / t, vy, dz / t), fuse: FUSE });
   }
 
+  // `enemies` is the Enemies system (not just the list): an explosion deals
+  // damage AND is heard across half the house.
   update(dt, enemies) {
     // --- Move grenades, detect detonation ---
     for (let i = this.nades.length - 1; i >= 0; i--) {
@@ -80,10 +82,12 @@ export class Grenades {
 
   _explode(pos, enemies) {
     // Area damage with linear falloff to the blast edge.
-    for (const e of enemies) {
+    for (const e of enemies.list) {
       const d = e.pos.distanceTo(pos);
       if (d < RADIUS) e.hp -= MAX_DAMAGE * (1 - d / RADIUS);
     }
+    // BOOM travels: sentries far beyond the blast wake up and come looking.
+    enemies.hearBlast(pos);
     // Visual flash.
     const mesh = new THREE.Mesh(FLASH_GEO,
       new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.9 }));

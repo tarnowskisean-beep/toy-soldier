@@ -11,7 +11,6 @@ export class MissionRunner {
     this.exit = exit;          // the front-door breach zone (escape missions)
     this.state = 'active';     // 'active' | 'won' | 'lost'
     this.timeAcc = 0;          // survive countdown / secure hold timer
-    this.waveTimer = (def.enemies && def.enemies.waves) ? def.enemies.waves.interval : 0;
     this.startKills = 0;
     this.zone = null;
 
@@ -41,16 +40,8 @@ export class MissionRunner {
   update(dt, squad, enemies) {
     if (this.state !== 'active') return;
     const o = this.def.objective;
-
-    // Reinforcement waves (survive missions).
-    const w = this.def.enemies && this.def.enemies.waves;
-    if (w) {
-      this.waveTimer -= dt;
-      if (this.waveTimer <= 0 && enemies.list.length < w.max) {
-        enemies.spawnWave(Math.min(w.perWave, w.max - enemies.list.length));
-        this.waveTimer = w.interval;
-      }
-    }
+    // (No reinforcement waves anywhere — campaign rule: the enemy you meet is
+    // the enemy that lives there.)
 
     // Objective progress.
     if (o.type === 'eliminate') {

@@ -21,6 +21,8 @@ export function createFigure(color, opts = {}) {
   const group = new THREE.Group();
   // ONE glossy plastic for everything — that's the army-man look.
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.0 });
+  // Everything that must fade when this figure blocks the camera.
+  const fadeMats = [mat];
 
   const add = (geo, x, y, z, rx = 0, ry = 0, rz = 0, m = mat) => {
     const mesh = new THREE.Mesh(geo, m);
@@ -62,6 +64,7 @@ export function createFigure(color, opts = {}) {
   // --- Class markings ---
   if (marking === 'cross') {
     const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+    fadeMats.push(white);
     add(box(0.26, 0.09, 0.03), 0, 1.5, 0.26 * bw, 0.12, 0, 0, white);
     add(box(0.09, 0.26, 0.03), 0, 1.5, 0.26 * bw, 0.12, 0, 0, white);
   } else if (marking === 'leader') {
@@ -72,6 +75,7 @@ export function createFigure(color, opts = {}) {
 
   // Muzzle: front tip of the rifle (local space), for spawning bullets.
   group.userData.muzzleOffset = new THREE.Vector3(0.08 * bw, 1.45, 0.55 + rifleLength / 2 + 0.08);
+  group.userData.fadeMats = fadeMats;
 
   return group;
 }

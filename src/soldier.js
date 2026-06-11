@@ -8,17 +8,25 @@
 import * as THREE from 'three';
 import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
+import { navStep } from './navgrid.js';
 import { BOUNDS } from './world.js';
 
 const MOUSE_SENS = 0.0022;
+
+// AI squadmates shoot DELIBERATELY — slower, less precise than a player.
+// Your aim is the squad's killing power; theirs is support. Without this the
+// three AIs out-shoot you and every fight wins itself.
+const AI_FIRE_SLOW = 3.2;
+const AI_SPREAD = 2.0;
 
 // The possible standing orders for an AI squadmate.
 export const ORDER = { FOLLOW: 'follow', HOLD: 'hold', MOVE: 'move', ATTACK: 'attack' };
 
 export class Soldier {
-  constructor(scene, classDef, obstacles) {
+  constructor(scene, classDef, obstacles, nav) {
     this.cls = classDef;
     this.obstacles = obstacles;
+    this.nav = nav;
 
     this.figure = createFigure(0x3f8f3f, {            // army green
       rifleLength: classDef.rifleLength,
@@ -150,10 +158,14 @@ export class Soldier {
       const standoff = this.order === ORDER.ATTACK ? this.cls.range * 0.65 : 0.5;
       if (this.order === ORDER.MOVE && dist < 0.7) this.order = ORDER.HOLD; // arrived
       if (dist > standoff) {
-        this._t.multiplyScalar(1 / dist);
-        const step = this.cls.speed * dt;
-        moveBy(this.position, this._t.x * step, this._t.z * step, this.obstacles, 0.6, BOUNDS);
-        if (!engage) this.yaw = Math.atan2(this._t.x, this._t.z); // face travel dir
+        // Hustle when the formation left us behind — the leader can sprint,
+        // followers can at least jog.
+        let speed = this.cls.speed;
+        if (this.order === ORDER.FOLLOW && dist > 9) speed *= 1.5;
+        // navStep paths around furniture instead of grinding into it.
+        const dir = navStep(this.nav, this, this.position, goal, speed, dt,
+                            this.obstacles, 0.6, BOUNDS);
+        if (!engage && dir) this.yaw = Math.atan2(dir.x, dir.z); // face travel dir
       }
     }
 
@@ -169,11 +181,11 @@ export class Soldier {
     if (engage) {
       this._t.subVectors(engage.pos, this.position); this._t.y = 0;
       this.yaw = Math.atan2(this._t.x, this._t.z);
-      const clearShot = hasLineOfSight(this.position, engage.pos, this.obstacles);
+      const clearShot = hasLineOfSight(this.position, engage.pos, this.obstacles, 1.45, 1.1);
       if (clearShot && this.fireCooldown <= 0) {
         const aim = engage.pos.clone(); aim.y = 1.1;   // aim at the torso
-        ctx.bullets.fire(this.muzzleWorldPosition(), this._aimDir(aim), 'player', this.cls.damage);
-        this.fireCooldown = this.cls.fireInterval;
+        ctx.bullets.fire(this.muzzleWorldPosition(), this._aimDir(aim, AI_SPREAD), 'player', this.cls.damage);
+        this.fireCooldown = this.cls.fireInterval * AI_FIRE_SLOW;
       }
     }
   }
@@ -189,10 +201,11 @@ export class Soldier {
     return best;
   }
 
-  // Direction from the muzzle to `point`, with a little random spread per class.
-  _aimDir(point) {
+  // Direction from the muzzle to `point`, with a little random spread per
+  // class (× an extra factor for deliberate-but-imperfect AI fire).
+  _aimDir(point, spreadMult = 1) {
     const dir = this._t.copy(point).sub(this.muzzleWorldPosition()).normalize();
-    const s = this.spread();
+    const s = this.spread() * spreadMult;
     dir.x += (Math.random() - 0.5) * s;
     dir.y += (Math.random() - 0.5) * s;
     dir.z += (Math.random() - 0.5) * s;

@@ -11,7 +11,7 @@ import { Grenades } from './grenades.js';
 import { buildSquadHUD, updateSquadHUD } from './hud.js';
 import { MISSIONS, missionById } from './missions.js';
 import { MissionRunner } from './mission.js';
-import { hasLineOfSight } from './physics.js';
+import { hasLineOfSight, segBoxEntryT } from './physics.js';
 import { sfx } from './audio.js';
 
 // --- Renderer + camera ---
@@ -30,16 +30,19 @@ const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerH
 const CAM_DISTANCE = 7, CAM_HEIGHT = 2.2;
 
 // --- Build the world + squad (enemies spawn when a mission starts) ---
-const { scene, obstacles, coverPoints, exit, exitGlow } = createWorld();
+const { scene, obstacles, coverPoints, exit, exitGlow, nav } = createWorld();
 const input = new Input(renderer.domElement);
-const squad = new Squad(scene, obstacles);
+const squad = new Squad(scene, obstacles, nav);
 const bullets = new Bullets(scene, obstacles);
-const enemies = new Enemies(scene, obstacles, coverPoints);
+const enemies = new Enemies(scene, obstacles, coverPoints, nav);
 const grenades = new Grenades(scene, obstacles);
 buildSquadHUD(squad);
 bullets.onFire = (origin, team) => {
   const d = origin.distanceTo(squad.active.position);
   sfx.gunshot(team === 'player' ? Math.min(d, 4) : d);
+  // EVERY shot is loud — your AI squadmates' fire wakes sentries exactly
+  // like yours does. One noise rule, no silent exceptions.
+  enemies.hearGunshot(origin);
 };
 window.game = { scene, camera, squad, bullets, enemies, grenades, input };
 
@@ -98,6 +101,7 @@ function showBriefing(def) {
 }
 
 function startPlaying() {
+  if (state !== 'brief') return;   // a double-click must not spawn the mission twice
   hideAllScreens();
   sfx.resume();   // user gesture: safe to start the audio engine
   // Mission title card, Sarge's-Heroes style.
@@ -231,20 +235,19 @@ function tick(dt) {
 
     squad.update(dt, { input, enemies: enemies.list, bullets, free: enemies.combatStarted });
     if (input.firing && !mapMode && squad.active.tryFireAt(aim.point, bullets)) {
-      // The shot is LOUD: sentries in earshot wake, the flash pops, the camera kicks.
-      const mz = squad.active.muzzleWorldPosition();
-      enemies.hearGunshot(mz);
-      muzzleLight.position.copy(mz);
+      // Hearing is handled by bullets.onFire (one rule for every shot) —
+      // here it's just the flash and the camera kick.
+      muzzleLight.position.copy(squad.active.muzzleWorldPosition());
       muzzleLight.intensity = 26;
       squad.active.pitch += 0.012;
     }
     muzzleLight.intensity *= Math.pow(0.0001, dt);   // fast falloff
-    grenades.update(dt, enemies.list);
+    grenades.update(dt, enemies);
     bullets.update(dt);
     enemies.update(dt, squad, bullets);
     squad.takeBulletHits(bullets);
 
-    placeCamera();
+    placeCamera(dt);
     updateZoom(dt);
 
     updateSquadHUD(squad, enemies.kills);
@@ -272,7 +275,12 @@ function tick(dt) {
 }
 window.game.step = (frames = 1, dt = 1 / 60) => { for (let i = 0; i < frames; i++) tick(dt); };
 
-function placeCamera() {
+// Only big slabs (walls, shelf, fridge, couch back) push the camera around —
+// colliding with every toy block would make the boom jitter constantly.
+const cameraBlockers = obstacles.filter((b) => b.max.y >= 6);
+let camDist = CAM_DISTANCE;
+
+function placeCamera(dt = 0) {
   if (mapMode) {
     // Tactical map: straight down over the house. Enemies you haven't met stay
     // hidden — the map shows squad intel, not omniscience.
@@ -293,15 +301,43 @@ function placeCamera() {
   }
   for (const e of enemies.list) e.fig.visible = true;
   const a = squad.active;
-  const ty2 = a.position.y + CAM_HEIGHT * (a.crouched ? 0.7 : 1);
-  const tx = a.position.x, ty = ty2, tz = a.position.z;
+  const ty = a.position.y + CAM_HEIGHT * (a.crouched ? 0.7 : 1);
+  const tx = a.position.x, tz = a.position.z;
   const cp = Math.cos(a.pitch), sp = Math.sin(a.pitch);
-  camera.position.set(
-    tx - Math.sin(a.yaw) * cp * CAM_DISTANCE,
-    ty + sp * CAM_DISTANCE,
-    tz - Math.cos(a.yaw) * cp * CAM_DISTANCE
-  );
+  const dx = -Math.sin(a.yaw) * cp, dy = sp, dz = -Math.cos(a.yaw) * cp;
+
+  // The camera is on a boom arm behind the soldier. Cast the arm against the
+  // walls and pull the camera IN FRONT of the first one it would cross —
+  // a camera inside a wall is a black screen.
+  let want = CAM_DISTANCE;
+  const ex = tx + dx * CAM_DISTANCE, ey = ty + dy * CAM_DISTANCE, ez = tz + dz * CAM_DISTANCE;
+  for (const b of cameraBlockers) {
+    const t = segBoxEntryT(tx, ty, tz, ex, ey, ez, b);
+    if (t < Infinity) want = Math.min(want, t * CAM_DISTANCE - 0.35);
+  }
+  want = Math.max(1.4, want);
+  // Snap IN instantly (never clip a wall), ease back OUT (no popping).
+  camDist = want < camDist ? want : camDist + (want - camDist) * Math.min(1, dt * 5);
+
+  camera.position.set(tx + dx * camDist, ty + dy * camDist, tz + dz * camDist);
   camera.lookAt(tx, ty, tz);
+
+  // A soldier between you and the lens goes ghost-transparent — you should
+  // never eat a screenful of your buddy's back (or, pressed against a wall,
+  // your own helmet). Distance is measured to the CHEST, where the camera
+  // actually collides with the figure.
+  for (const m of squad.members) {
+    const p = m.figure.position;
+    const dcx = p.x - camera.position.x;
+    const dcy = p.y + 1.4 - camera.position.y;
+    const dcz = p.z - camera.position.z;
+    const d = Math.sqrt(dcx * dcx + dcy * dcy + dcz * dcz);
+    const op = Math.max(0, Math.min(1, (d - 1.4) / 1.2));
+    for (const mat of m.figure.userData.fadeMats) {
+      mat.transparent = op < 1;
+      mat.opacity = op;
+    }
+  }
 }
 
 function handleAbility(aim) {
