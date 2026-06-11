@@ -25,6 +25,11 @@ export const TYPES = {
             runner: true, fig: { rifleLength: 0.45 } },
   gunner: { hp: 70, speed: 4.2, damage: 9,  fireInterval: 0.09, spread: 0.12,
             burst: 4, burstPause: 1.5, fig: { bulky: true, rifleLength: 1.3 } },
+  // The watchtower sentry: planted on his platform (never moves, never
+  // panics off the edge), sees FAR and WIDE — but frail, and his own
+  // parapet shadows a blind circle beneath him.
+  lookout: { hp: 30, speed: 0, damage: 12, fireInterval: 1.1, spread: 0.05,
+             static: true, sightMult: 1.35, cone: -0.25, fig: { rifleLength: 1.2 } },
 };
 
 // Distances ride the 1.4x world scale (senses ~×1.25 — the bigger house
@@ -97,9 +102,12 @@ export class Enemies {
     for (const s of layout) {
       const T = TYPES[s.type || 'rifle'];
       const fig = createFigure(0xcdb072, T.fig);
-      const spot = this.nav.nearestOpen(s.x, s.z);
+      // Elevated posts (lookouts) spawn exactly where placed — ON the tower;
+      // ground troops clamp to standable cells.
+      const spot = s.baseY ? { x: s.x, z: s.z } : this.nav.nearestOpen(s.x, s.z);
       const pos = new THREE.Vector3(spot.x, 0, spot.z);
       fig.position.copy(pos);
+      fig.position.y = s.baseY || 0;
       fig.rotation.y = s.facing;
       this.scene.add(fig);
 
@@ -116,6 +124,8 @@ export class Enemies {
         fireInterval: T.fireInterval, spread: T.spread,
         burst: T.burst || 0, burstPause: T.burstPause || 0, burstLeft: T.burst || 0,
         runner: !!T.runner,
+        static: !!T.static, sightMult: T.sightMult || 1, cone: T.cone ?? SIGHT_CONE,
+        baseY: s.baseY || 0,
         fireCd: Math.random() * 0.5,
         recheck: 0, cover: null, suppressed: 0, stagger: 0,
         alerted: false, aware: 0, alertFlash: 0, alertedFor: 0, callT: 0,
@@ -260,7 +270,7 @@ export class Enemies {
       for (const b of bullets.active) {
         if (b.team !== 'player') continue;
         const hx = b.mesh.position.x - e.pos.x;
-        const hy = b.mesh.position.y - TORSO_Y;
+        const hy = b.mesh.position.y - (e.baseY + TORSO_Y);
         const hz = b.mesh.position.z - e.pos.z;
         if (hx * hx + hy * hy + hz * hz < HIT_RADIUS * HIT_RADIUS) {
           e.hp -= b.damage;
@@ -281,7 +291,7 @@ export class Enemies {
       if (e.hp <= 0) {
         // A LOUD kill SHATTERS the toy into plastic shards (takedowns slump
         // a quiet corpse instead — the battlefield tells you how each died).
-        this._v.set(e.pos.x, 0, e.pos.z);
+        this._v.set(e.pos.x, e.baseY, e.pos.z);
         bullets.shatter(this._v);
         this.scene.remove(e.fig);
         this.list.splice(i, 1);
@@ -293,7 +303,7 @@ export class Enemies {
       e.stagger = Math.max(0, e.stagger - dt);
       e.alertFlash = Math.max(0, e.alertFlash - dt);
 
-      if (e.panicT > 0) {
+      if (e.panicT > 0 && !e.static) {
         // GRENADE! Nothing else matters — scatter away from it.
         e.panicT -= dt;
         const dx = e.pos.x - e.panicFrom.x, dz = e.pos.z - e.panicFrom.z;
@@ -344,7 +354,7 @@ export class Enemies {
 
   // --- SENTRY: stand watch / walk patrol; build suspicion on what you see ---
   _sentry(e, dt, squad) {
-    if (e.patrol) {
+    if (e.patrol && !e.static) {
       // Patrol walk (ping-pong between spawn and patrol point). navStep also
       // walks him BACK to the route after an investigation took him far away.
       const goal = e.patrol.toB ? e.patrol.b : e.patrol.a;
@@ -359,7 +369,7 @@ export class Enemies {
           e.fig.rotation.y = e.facing;
         }
       }
-    } else if (Math.hypot(e.home.x - e.pos.x, e.home.z - e.pos.z) > 1.2) {
+    } else if (!e.static && Math.hypot(e.home.x - e.pos.x, e.home.z - e.pos.z) > 1.2) {
       // Drifted off the post (came back from a search): walk home.
       const dir = navStep(this.nav, e, e.pos, e.home, PATROL_SPEED, dt,
                           this.obstacles, 0.6, this.bounds);
@@ -378,7 +388,7 @@ export class Enemies {
     // run at real heights — a crouched man can hide behind knee-high cover
     // (but POPPING OUT over it counts as standing). A sentry whose LAMP got
     // shot out is squinting into the dark.
-    let sightR = SIGHT_RANGE;
+    let sightR = SIGHT_RANGE * e.sightMult;
     if (this.lamp && !this.lamp.alive &&
         Math.hypot(e.pos.x - this.lamp.pos.x, e.pos.z - this.lamp.pos.z) < this.lamp.radius) {
       sightR *= 0.6;
@@ -390,9 +400,9 @@ export class Enemies {
       const dx = m.position.x - e.pos.x, dz = m.position.z - e.pos.z;
       const d = Math.hypot(dx, dz);
       if (d >= seenD) continue;
-      if ((fx * dx + fz * dz) / (d || 1) < SIGHT_CONE) continue;
+      if ((fx * dx + fz * dz) / (d || 1) < e.cone) continue;
       const hidden = m.crouched && !m.peeking;
-      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5, hidden ? 0.8 : 1.25)) continue;
+      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5 + e.baseY, hidden ? 0.8 : 1.25)) continue;
       seen = m; seenD = d;
     }
     if (seen) {
@@ -427,7 +437,7 @@ export class Enemies {
       const d = e.pos.distanceTo(m.position);
       if (d >= tDist) continue;
       const hidden = m.crouched && !m.peeking;
-      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5, hidden ? 0.75 : 1.1)) continue;
+      if (!hasLineOfSight(e.pos, m.position, this.obstacles, 1.5 + e.baseY, hidden ? 0.75 : 1.1)) continue;
       target = m; tDist = d;
     }
 
@@ -463,7 +473,7 @@ export class Enemies {
       // INVESTIGATE: walk to the last clue (a muzzle flash heard, a buddy's
       // shout, the spot we saw them) — then SEARCH on the spot.
       let arrived = true;
-      if (e.hasIntel && Math.hypot(e.lastKnown.x - e.pos.x, e.lastKnown.z - e.pos.z) > 2.2) {
+      if (e.hasIntel && !e.static && Math.hypot(e.lastKnown.x - e.pos.x, e.lastKnown.z - e.pos.z) > 2.2) {
         const dir = navStep(this.nav, e, e.pos, e.lastKnown, e.speed * 0.8, dt,
                             this.obstacles, 0.6, this.bounds);
         e.fig.position.copy(e.pos);
@@ -502,7 +512,7 @@ export class Enemies {
     const dist = this._v.length();
 
     e.recheck -= dt;
-    if (e.recheck <= 0 || !e.cover) {
+    if (!e.static && (e.recheck <= 0 || !e.cover)) {
       e.cover = this._findCover(e, target);
       e.recheck = COVER_RECHECK;
     }
@@ -510,13 +520,13 @@ export class Enemies {
 
     let goal = null;
     if (e.cover) goal = e.cover;
-    else if (dist > ENEMY_PREFERRED + 2) {
+    else if (!e.static && dist > ENEMY_PREFERRED + 2) {
       const k = ENEMY_PREFERRED / dist;
       this._g.set(target.position.x - this._v.x * k, 0, target.position.z - this._v.z * k);
       goal = this._g;
     }
 
-    if (goal) {
+    if (goal && !e.static) {
       this._g.subVectors(goal, e.pos); this._g.y = 0;
       if (this._g.length() > 0.5) {
         navStep(this.nav, e, e.pos, goal, e.speed, dt, this.obstacles, 0.6, this.bounds);

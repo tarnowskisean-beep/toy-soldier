@@ -300,6 +300,9 @@ export class Soldier {
     // Rules of engagement: hold fire until the player starts the war (or the
     // enemy does) — except point-blank self-defense.
     if (engage && !ctx.free && engage.pos.distanceTo(this.position) > 12) engage = null;
+    // HOLD FIRE is an order: bite the trigger even with a target in the open.
+    // Only point-blank self-defense overrides it.
+    if (engage && ctx.fireMode === 'hold' && engage.pos.distanceTo(this.position) > 6) engage = null;
 
     // Where should we walk?
     let goal = null;
@@ -341,9 +344,9 @@ export class Soldier {
     if (engage) {
       this._t.subVectors(engage.pos, this.position); this._t.y = 0;
       this.yaw = Math.atan2(this._t.x, this._t.z);
-      const clearShot = hasLineOfSight(this.position, engage.pos, this.obstacles, 1.45, 1.1);
+      const clearShot = hasLineOfSight(this.position, engage.pos, this.obstacles, 1.45, (engage.baseY || 0) + 1.1);
       if (clearShot && this.fireCooldown <= 0) {
-        const aim = engage.pos.clone(); aim.y = 1.1;   // aim at the torso
+        const aim = engage.pos.clone(); aim.y = (engage.baseY || 0) + 1.1;   // the torso, wherever it stands
         ctx.bullets.fire(this.muzzleWorldPosition(), this._aimDir(aim, AI_SPREAD), 'player', this.cls.damage);
         this.fireCooldown = this.cls.fireInterval * AI_FIRE_SLOW;
       }

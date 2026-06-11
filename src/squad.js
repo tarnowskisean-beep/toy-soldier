@@ -39,6 +39,10 @@ export class Squad {
       return s;
     });
     this.activeIndex = 0;
+    // Fire discipline: 'free' = engage at will once combat starts;
+    // 'hold' = nobody shoots (point-blank self-defense only) — the order
+    // that lets the whole squad SNEAK with you.
+    this.fireMode = 'free';
 
     // Glowing ring under the soldier you're currently controlling.
     this.ring = new THREE.Mesh(
@@ -133,6 +137,7 @@ export class Squad {
         enemies: ctx.enemies,
         bullets: ctx.bullets,
         free: ctx.free,
+        fireMode: this.fireMode,
         formationSlot: isActive ? null : slots[s++ % slots.length],
       });
     }

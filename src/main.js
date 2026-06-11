@@ -76,6 +76,7 @@ const objectiveEl = $('objective'), crosshair = $('crosshair');
 const vignette = $('vignette'), abilityEl = $('ability'), scopeEl = $('scope');
 const dmgdirEl = $('dmgdir'), takedownEl = $('takedown'), peekEl = $('peek');
 const ammoTopEl = $('ammoTop'), healthfillEl = $('healthfill');
+const firemodeEl = $('firemode');
 const portraitCv = $('portraitCv'), weaponCv = $('weaponCv'), portraitNameEl = $('portraitName');
 
 // --- Class portrait: a little molded bust in the chip, Sarge's-Heroes style ---
@@ -273,7 +274,7 @@ function getAim() {
   const ray = raycaster.ray;
   let enemy = null, bestT = Infinity;
   for (const e of enemies.list) {
-    const cx = e.pos.x, cy = 1.1, cz = e.pos.z;
+    const cx = e.pos.x, cy = (e.baseY || 0) + 1.1, cz = e.pos.z;
     const ox = cx - ray.origin.x, oy = cy - ray.origin.y, oz = cz - ray.origin.z;
     const t = ox * ray.direction.x + oy * ray.direction.y + oz * ray.direction.z;
     if (t < 0 || t > bestT) continue;
@@ -323,12 +324,18 @@ function tick(dt) {
     }
     if (input.consume('KeyF')) { squad.orderFollow(); orderBark('On you!'); }
     if (input.consume('KeyH')) { squad.orderHold(); orderBark('Holding!'); }
+    if (input.consume('KeyX')) {
+      squad.fireMode = squad.fireMode === 'free' ? 'hold' : 'free';
+      orderBark(squad.fireMode === 'hold' ? 'Hold fire!' : 'Weapons free!');
+      firemodeEl.textContent = 'SQUAD ▸ ' + (squad.fireMode === 'hold' ? 'HOLD FIRE' : 'WEAPONS FREE');
+      firemodeEl.classList.toggle('hold', squad.fireMode === 'hold');
+    }
     if (input.consume('KeyC')) squad.active.toggleCover();
     if (input.consume('KeyM')) mapMode = !mapMode;
     if (input.consume('KeyR')) squad.active.startReload();
 
     handleAbility(aim);
-    handleTakedown();
+    handleInteract(dt);
 
     squad.update(dt, { input, enemies: enemies.list, bullets, free: enemies.combatStarted });
     if (input.firing && !mapMode && squad.active.tryFireAt(aim.point, bullets)) {
@@ -513,6 +520,7 @@ function takedownCandidate() {
   let best = null, bestD = TAKEDOWN_RANGE;
   for (const e of enemies.list) {
     if (e.alerted && !e.searching) continue;        // eyes-on men can't be grabbed
+    if (e.baseY > 0) continue;                      // can't reach a man on a tower
     const dx = a.position.x - e.pos.x, dz = a.position.z - e.pos.z;
     const d = Math.hypot(dx, dz);
     if (d >= bestD) continue;
@@ -524,8 +532,42 @@ function takedownCandidate() {
   return best;
 }
 
-function handleTakedown() {
+// E is the HANDS button: revive the buddy beside you (priority), or drop the
+// sentry whose back is turned.
+let reviveT = 0;
+function handleInteract(dt) {
+  const a = squad.active;
+
+  // Anyone can get a downed mate back up — the medic is just twice as fast
+  // and brings them back twice as healthy.
+  let mate = null;
+  for (const m of squad.members) {
+    if (m === a || !m.downed) continue;
+    if (m.position.distanceTo(a.position) < 2.8) { mate = m; break; }
+  }
+  if (mate && !mapMode) {
+    const medic = a.cls.key === 'medic';
+    if (input.isDown('KeyE')) {
+      reviveT += dt * (medic ? 2.1 : 1);
+      takedownEl.textContent = `REVIVING… ${Math.min(99, Math.round(reviveT / 2.5 * 100))}%`;
+      if (reviveT >= 2.5) {
+        mate.revive(medic ? 0.65 : 0.35);
+        sfx.pickup();
+        barks.say(mate.figure, pick(['Back in it!', 'Thanks — I owe you.', 'On my feet!']), '#7dff7d');
+        reviveT = 0;
+      }
+    } else {
+      reviveT = Math.max(0, reviveT - dt * 2);
+      takedownEl.textContent = `E  REVIVE ${mate.cls.name}`;
+    }
+    takedownEl.classList.add('show');
+    peekEl.classList.remove('show');
+    return;
+  }
+  reviveT = 0;
+
   const cand = takedownCandidate();
+  if (cand) takedownEl.textContent = 'E  SILENT TAKEDOWN';
   takedownEl.classList.toggle('show', !!cand && !mapMode);
   if (cand && input.consume('KeyE')) {
     enemies.takedown(cand, squad.active.position);
@@ -533,7 +575,6 @@ function handleTakedown() {
   }
   // Cover affordances: offer the snap when you're near it, the pop when
   // you're in it.
-  const a = squad.active;
   const showPop = !mapMode && a.alive && a.inCover && !a.aiming && !cand;
   const showTake = !mapMode && a.alive && !a.inCover && a.coverNear && !a.aiming && !cand;
   if (showPop || showTake) {

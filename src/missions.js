@@ -45,8 +45,9 @@ export const MISSIONS = [
       { type: 'escape', holdSeconds: 4,
         toast: 'BREACH THE FRONT DOOR — hold the doormat' },
     ],
-    // The tan occupation, 17 men — ONE designed problem per pocket, with
+    // The tan occupation, 18 men — ONE designed problem per pocket, with
     // space between fights. facing is radians (atan2(x, z) style).
+    // (baseY puts a man ON something — the watchtower lookout.)
     enemyLayout: [
       // LIVING ROOM — a guard at each downed squadmate, a book-stack post,
       // a roaming scout, and the door guard.
@@ -56,6 +57,7 @@ export const MISSIONS = [
       { x: 45.5, z: -16.5, facing: -1.8 },                              // book-stack post
       { x: 53, z: -27, facing: -Math.PI / 2, type: 'scout', patrol: { x: 23, z: -22 } },  // rug-lane scout
       { x: 69.5, z: 18, facing: -Math.PI / 2 },                         // hallway-door guard
+      { x: 56, z: 18, facing: -2.2, type: 'lookout', baseY: 9.1 },      // THE WATCHTOWER
       // HALLWAY — a sentry + the corridor scout.
       { x: 85, z: -13, facing: -1.2 },
       { x: 84.5, z: 30, facing: Math.PI, type: 'scout', patrol: { x: 84.5, z: -36 } },

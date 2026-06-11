@@ -267,6 +267,15 @@ function buildHouse() {
   // A magazine tower makes the hallway approach a corner, not a corridor.
   box(5, 7, 5, 60, -6, 0xd8cfae, { cover: true, rough: 0.7 });
 
+  // THE WATCHTOWER: a tan lookout post built from a wooden block, parapet
+  // rim on top. The lookout up there sees FAR — but the tower's own rim
+  // shadows a dead zone beneath him (hug the base and he can't see you).
+  box(5, 6.5, 5, 56, 18, 0x6b4a26, { cover: true, rough: 0.7 });
+  box(5.2, 0.7, 0.5, 56, 15.7, 0x8a7a4a, { y: 6.85, obstacle: false });
+  box(5.2, 0.7, 0.5, 56, 20.3, 0x8a7a4a, { y: 6.85, obstacle: false });
+  box(0.5, 0.7, 5.2, 53.7, 18, 0x8a7a4a, { y: 6.85, obstacle: false });
+  box(0.5, 0.7, 5.2, 58.3, 18, 0x8a7a4a, { y: 6.85, obstacle: false });
+
   // --- LIVING ROOM furniture ---
   // Couch along the south wall — woven upholstery.
   const couchMat = new THREE.MeshStandardMaterial({ map: fabricTexture('#3e4a5c'), roughness: 0.95 });
@@ -402,10 +411,13 @@ function buildHouse() {
   const night = new THREE.PointLight(0x6a86ff, 26, 42);
   night.position.set(84.5 * WS, 5, 45 * WS);
   scene.add(night);
-  // The garrison's foyer emplacements (and the player's approach cover).
+  // THE FOYER FORT: the garrison's U-shaped sandbag emplacement around the
+  // front door — front wall + flanks. Assaulting it is the finale.
   box(1.4, 1.4, 1.4, 79, 37, 0x9a1812, { cover: true, rough: 0.35 });
   box(1.4, 1.4, 1.4, 90, 37, 0x1a3a9a, { cover: true, rough: 0.35 });
   box(3.2, 1.05, 0.9, 84.5, 37.5, 0x8a7a4a, { cover: true });
+  box(0.9, 1.05, 3.0, 77.5, 40.5, 0x8a7a4a, { cover: true });
+  box(0.9, 1.05, 3.0, 91.5, 40.5, 0x8a7a4a, { cover: true });
 
   // --- MISSION PROPS ---
   // Supply drops: the plane's cargo, scattered across the house. A green
@@ -446,6 +458,9 @@ function buildHouse() {
   radioGroup.add(lamp);
   radioGroup.position.set(136 * WS, 0, 28 * WS);
   scene.add(radioGroup);
+  // The radio's sandbag nest — the set-piece room earns its name.
+  box(3.0, 1.05, 0.9, 136, 25.5, 0x8a7a4a, { cover: true });
+  box(0.9, 1.05, 2.4, 133.6, 27.4, 0x8a7a4a, { cover: true });
   const radio = { pos: new THREE.Vector3(136 * WS, 0, 28 * WS), alive: true, hp: 30, group: radioGroup, lamp };
 
   // Bake the walkability grid AFTER all furniture is placed — every AI

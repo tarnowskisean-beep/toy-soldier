@@ -91,6 +91,13 @@
 
       /* (Ammo lives in the top-right vitals block now.) */
 
+      /* Squad fire-discipline chip, left of the ability prompt */
+      #firemode { position: absolute; bottom: 92px; left: 50%; transform: translateX(calc(-50% - 185px));
+        font-size: 13px; font-weight: bold; letter-spacing: 2px; padding: 5px 12px;
+        border-radius: 5px; background: rgba(15, 30, 15, 0.62); border: 2px solid rgba(255,255,255,0.18);
+        color: #cfeacf; }
+      #firemode.hold { color: #ffd24d; border-color: rgba(255,210,77,0.7); }
+
       /* Damage direction: a red arc segment rotated toward the shooter */
       #dmgdir { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px;
         transform: translate(-50%, -50%); opacity: 0; pointer-events: none;
@@ -199,6 +206,7 @@
         <div id="cardMission">Mission 1 — CRASH SITE</div>
       </div>
       <div id="ability"></div>
+      <div id="firemode">SQUAD ▸ WEAPONS FREE</div>
       <div id="squad"></div>
 
       <!-- Mission select -->
@@ -217,7 +225,8 @@
         <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>RMB</b> aim • <b>CLICK</b> fire • <b>R</b> reload</div>
         <div class="row"><b>SHIFT</b> sprint • <b>C</b> take cover / crouch • <b>E</b> silent takedown <i>(from behind)</i></div>
         <div class="row">In cover: <b>RMB</b> pop out &amp; fire • <b>A/D</b> slide along • step back or <b>SHIFT</b> to leave</div>
-        <div class="row"><b>1–4 / TAB</b> switch soldier • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold • <b>M</b> map</div>
+        <div class="row"><b>1–4 / TAB</b> switch • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold • <b>X</b> hold fire / weapons free • <b>M</b> map</div>
+        <div class="row"><b>E</b> also REVIVES a downed buddy <i>(hold — medic is fastest)</i></div>
         <div class="row"><b>SPACE</b> grenade / revive / dig in <i>(by class)</i></div>
         <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>
       </div>
