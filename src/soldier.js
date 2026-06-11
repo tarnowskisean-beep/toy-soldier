@@ -9,7 +9,6 @@ import * as THREE from 'three';
 import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
 import { navStep } from './navgrid.js';
-import { BOUNDS } from './world.js';
 import { sfx } from './audio.js';
 
 const MOUSE_SENS = 0.0022;
@@ -24,10 +23,11 @@ const AI_SPREAD = 2.0;
 export const ORDER = { FOLLOW: 'follow', HOLD: 'hold', MOVE: 'move', ATTACK: 'attack' };
 
 export class Soldier {
-  constructor(scene, classDef, obstacles, nav) {
+  constructor(scene, classDef, obstacles, nav, bounds) {
     this.cls = classDef;
     this.obstacles = obstacles;
     this.nav = nav;
+    this.bounds = bounds;
 
     this.figure = createFigure(0x3f8f3f, {            // army green
       rifleLength: classDef.rifleLength,
@@ -158,7 +158,7 @@ export class Soldier {
       if (this.aiming) speed *= 0.55;         // walking the sights
       if (this.suppressing) speed *= 0.5;     // dug-in heavy moves slowly
       const step = (speed * dt) / len;
-      moveBy(this.position, mx * step, mz * step, this.obstacles, 0.6, BOUNDS);
+      moveBy(this.position, mx * step, mz * step, this.obstacles, 0.6, this.bounds);
     } else {
       this.sprinting = false;
     }
@@ -215,7 +215,7 @@ export class Soldier {
         if (this.order === ORDER.FOLLOW && dist > 12) speed *= 1.5;
         // navStep paths around furniture instead of grinding into it.
         const dir = navStep(this.nav, this, this.position, goal, speed, dt,
-                            this.obstacles, 0.6, BOUNDS);
+                            this.obstacles, 0.6, this.bounds);
         if (!engage && dir) this.yaw = Math.atan2(dir.x, dir.z); // face travel dir
       }
     }

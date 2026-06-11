@@ -6,7 +6,6 @@
 // we're not allocating garbage every shot.
 
 import * as THREE from 'three';
-import { BOUNDS } from './world.js';
 import { segHitsRect } from './physics.js';
 
 const BULLET_SPEED = 85;
@@ -19,9 +18,10 @@ const SPARK_GEO = new THREE.SphereGeometry(0.07, 4, 4);
 const SPARK_MAT = new THREE.MeshBasicMaterial({ color: 0xffc66a });
 
 export class Bullets {
-  constructor(scene, obstacles) {
+  constructor(scene, obstacles, bounds) {
     this.scene = scene;
     this.obstacles = obstacles;
+    this.bounds = bounds;
     this.active = [];
     this.pool = [];
     this.sparks = [];
@@ -79,8 +79,8 @@ export class Bullets {
       b.life -= dt;
 
       let dead = b.life <= 0 || p.y < 0 ||
-        p.x < BOUNDS.minX - 8 || p.x > BOUNDS.maxX + 8 ||
-        p.z < BOUNDS.minZ - 8 || p.z > BOUNDS.maxZ + 8;
+        p.x < this.bounds.minX - 8 || p.x > this.bounds.maxX + 8 ||
+        p.z < this.bounds.minZ - 8 || p.z > this.bounds.maxZ + 8;
 
       // Crate collision: did the path from old->new cross any crate? (Sweeping
       // the segment, not just testing the point, prevents fast bullets tunneling.)

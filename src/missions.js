@@ -16,7 +16,8 @@ export const MISSIONS = [
   {
     id: 'crash-site',
     name: 'CRASH SITE',
-    sector: 'THE HOUSE — LIVING ROOM, DUSK',
+    world: 'house',
+    sector: 'THE HOUSE — GROUND FLOOR, DUSK',
     briefing:
       'We came down hard through the window and the squad got thrown across the ' +
       'room. You are ALONE at the wreck — Heavy, Sniper and Medic are lying out ' +
@@ -86,17 +87,45 @@ export const MISSIONS = [
       { x: 80.5, z: 42.5, facing: 2.8 },
     ],
   },
+  // The rest of the journey home (see docs/CAMPAIGN.md). Each unlocks when
+  // its environment is built — one mission perfected at a time.
   {
-    id: 'hallway',
+    id: 'porch',
     name: 'OUT THE DOOR',
-    sector: 'THE PORCH — NIGHT',
+    world: 'porch',
+    sector: 'THE PORCH & FRONT GARDEN — NIGHT',
     briefing: 'Coming soon.',
     comingSoon: true,
   },
   {
     id: 'street',
     name: 'THE STREET',
-    sector: 'OUTSIDE — NIGHT',
+    world: 'street',
+    sector: 'SIDEWALK & GUTTER — NIGHT',
+    briefing: 'Coming soon.',
+    comingSoon: true,
+  },
+  {
+    id: 'storm-drain',
+    name: 'THE STORM DRAIN',
+    world: 'drain',
+    sector: 'UNDER THE STREET — DARK',
+    briefing: 'Coming soon.',
+    comingSoon: true,
+  },
+  {
+    id: 'backyard',
+    name: 'THE BACKYARD WAR',
+    world: 'backyard',
+    sector: "THE NEIGHBOR'S YARD — DAWN",
+    briefing: 'Coming soon.',
+    comingSoon: true,
+  },
+  {
+    id: 'toy-store',
+    name: 'THE TOY STORE',
+    world: 'store',
+    sector: 'AISLE 7 — HOME',
     briefing: 'Coming soon.',
     comingSoon: true,
   },

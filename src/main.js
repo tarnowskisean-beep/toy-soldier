@@ -29,14 +29,26 @@ document.body.appendChild(renderer.domElement);
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 500);
 const CAM_DISTANCE = 7, CAM_HEIGHT = 2.2;
 
-// --- Build the world + squad (enemies spawn when a mission starts) ---
-const { scene, obstacles, coverPoints, exit, exitGlow, nav, supplies, radio } = createWorld();
-const world = { exit, supplies, radio };
+// --- Resolve the boot mission FIRST — the world is MISSION DATA ---
+// (?smoke=1 forces mission 1 and runs the regression harness after boot.)
+const SMOKE = new URLSearchParams(location.search).has('smoke');
+const savedScreen = SMOKE
+  ? 'mission:' + MISSIONS[0].id
+  : (localStorage.getItem('ts_screen') || 'menu');
+let savedDef = savedScreen.startsWith('mission:')
+  ? missionById(savedScreen.slice('mission:'.length))
+  : null;
+if (savedDef && savedDef.comingSoon) savedDef = null;
+const bootDef = savedDef || MISSIONS[0];   // the menu idles over mission 1's set
+
+// --- Build that mission's world + the squad (enemies spawn at deploy) ---
+const world = createWorld(bootDef.world);
+const { scene, obstacles, coverPoints, exitGlow, nav, bounds } = world;
 const input = new Input(renderer.domElement);
-const squad = new Squad(scene, obstacles, nav);
-const bullets = new Bullets(scene, obstacles);
-const enemies = new Enemies(scene, obstacles, coverPoints, nav);
-const grenades = new Grenades(scene, obstacles);
+const squad = new Squad(scene, obstacles, nav, bounds);
+const bullets = new Bullets(scene, obstacles, bounds);
+const enemies = new Enemies(scene, obstacles, coverPoints, nav, bounds);
+const grenades = new Grenades(scene, obstacles, bounds);
 buildSquadHUD(squad);
 bullets.onFire = (origin, team) => {
   const d = origin.distanceTo(squad.active.position);
@@ -45,7 +57,7 @@ bullets.onFire = (origin, team) => {
   // like yours does. One noise rule, no silent exceptions.
   enemies.hearGunshot(origin);
 };
-window.game = { scene, camera, squad, bullets, enemies, grenades, input };
+window.game = { scene, camera, squad, bullets, enemies, grenades, input, world };
 
 // --- Campaign state machine ---
 let state = 'menu';          // 'menu' | 'brief' | 'playing' | 'won' | 'lost'
@@ -172,15 +184,10 @@ renderer.domElement.addEventListener('click', () => {
   if (state === 'playing' && !input.locked) input.requestLock();
 });
 
-// --- Boot into the saved screen ---
+// --- Boot into the saved screen (the matching world is already built) ---
 (function boot() {
-  const screen = localStorage.getItem('ts_screen') || 'menu';
-  if (screen.startsWith('mission:')) {
-    const def = missionById(screen.slice('mission:'.length));
-    if (def) showBriefing(def); else showMenu();
-  } else {
-    showMenu();
-  }
+  if (savedDef) showBriefing(savedDef); else showMenu();
+  if (SMOKE) import('./smoke.js').then((m) => m.runSmoke());
 })();
 
 // --- Aiming raycast (crosshair → world point / enemy) ---
@@ -308,8 +315,8 @@ function placeCamera(dt = 0) {
   if (mapMode) {
     // Tactical map: straight down over the house. Enemies you haven't met stay
     // hidden — the map shows squad intel, not omniscience.
-    camera.position.set(103, 162, 0.01);
-    camera.lookAt(103, 0, 0);
+    camera.position.set(world.map.x, world.map.height, 0.01);
+    camera.lookAt(world.map.x, 0, 0);
     for (const e of enemies.list) {
       let seen = e.alerted || e.aware > 0.05;
       if (!seen) {

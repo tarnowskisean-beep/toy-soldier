@@ -6,7 +6,6 @@
 // damage that falls off with distance, plus a brief expanding-flash visual.
 
 import * as THREE from 'three';
-import { BOUNDS } from './world.js';
 import { segHitsRect } from './physics.js';
 
 const GRAVITY = 32;
@@ -20,9 +19,10 @@ const NADE_MAT = new THREE.MeshStandardMaterial({ color: 0x2f3a24, roughness: 0.
 const FLASH_GEO = new THREE.SphereGeometry(1, 16, 12);
 
 export class Grenades {
-  constructor(scene, obstacles) {
+  constructor(scene, obstacles, bounds) {
     this.scene = scene;
     this.obstacles = obstacles;
+    this.bounds = bounds;
     this.nades = [];
     this.flashes = [];
   }
@@ -54,7 +54,9 @@ export class Grenades {
       p.addScaledVector(n.vel, dt);
       n.fuse -= dt;
 
-      let boom = n.fuse <= 0 || p.y <= 0.2 || p.x < BOUNDS.minX || p.x > BOUNDS.maxX || p.z < BOUNDS.minZ || p.z > BOUNDS.maxZ;
+      let boom = n.fuse <= 0 || p.y <= 0.2 ||
+        p.x < this.bounds.minX || p.x > this.bounds.maxX ||
+        p.z < this.bounds.minZ || p.z > this.bounds.maxZ;
       if (!boom) {
         for (const b of this.obstacles) {
           if (p.y <= b.max.y && segHitsRect(px, pz, p.x, p.z, b.min.x, b.min.z, b.max.x, b.max.z)) {

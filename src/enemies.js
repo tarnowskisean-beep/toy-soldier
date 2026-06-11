@@ -11,7 +11,6 @@ import * as THREE from 'three';
 import { createFigure } from './figure.js';
 import { moveBy, hasLineOfSight } from './physics.js';
 import { navStep } from './navgrid.js';
-import { BOUNDS } from './world.js';
 import { sfx } from './audio.js';
 
 // One brain, three bodies. RIFLEMAN holds his post and fights from cover.
@@ -68,11 +67,12 @@ const MAT_Q = tellMaterial('?', '#ffd23d');
 const MAT_BANG = tellMaterial('!', '#ff4030');
 
 export class Enemies {
-  constructor(scene, obstacles, coverPoints, nav) {
+  constructor(scene, obstacles, coverPoints, nav, bounds) {
     this.scene = scene;
     this.obstacles = obstacles;
     this.coverPoints = coverPoints;
     this.nav = nav;
+    this.bounds = bounds;
     this.list = [];
     this.dying = [];               // knockdown animations in flight
     this.kills = 0;
@@ -253,7 +253,7 @@ export class Enemies {
           this.alert(e, shooter ? shooter.position : null);
           // Rock him back along the bullet's path.
           const bd = b.dir || this._v.set(0, 0, 0);
-          moveBy(e.pos, bd.x * 0.5, bd.z * 0.5, this.obstacles, 0.6, BOUNDS);
+          moveBy(e.pos, bd.x * 0.5, bd.z * 0.5, this.obstacles, 0.6, this.bounds);
           e.fig.position.copy(e.pos);
           bullets.burst(b.mesh.position);   // sparks on flesh... plastic
           bullets.retireBullet(b);
@@ -317,7 +317,7 @@ export class Enemies {
         e.patrol.toB = !e.patrol.toB;
       } else {
         const dir = navStep(this.nav, e, e.pos, goal, PATROL_SPEED, dt,
-                            this.obstacles, 0.6, BOUNDS);
+                            this.obstacles, 0.6, this.bounds);
         e.fig.position.copy(e.pos);
         if (dir) {
           e.facing = Math.atan2(dir.x, dir.z);
@@ -327,7 +327,7 @@ export class Enemies {
     } else if (Math.hypot(e.home.x - e.pos.x, e.home.z - e.pos.z) > 1.2) {
       // Drifted off the post (came back from a search): walk home.
       const dir = navStep(this.nav, e, e.pos, e.home, PATROL_SPEED, dt,
-                          this.obstacles, 0.6, BOUNDS);
+                          this.obstacles, 0.6, this.bounds);
       e.fig.position.copy(e.pos);
       if (dir) {
         e.facing = Math.atan2(dir.x, dir.z);
@@ -393,7 +393,7 @@ export class Enemies {
         if (rd > 2.2) {
           e.callT = 0;
           const dir = navStep(this.nav, e, e.pos, radio.pos, e.speed * 1.1, dt,
-                              this.obstacles, 0.6, BOUNDS);
+                              this.obstacles, 0.6, this.bounds);
           e.fig.position.copy(e.pos);
           if (dir) e.facing = Math.atan2(dir.x, dir.z);
         } else {
@@ -414,7 +414,7 @@ export class Enemies {
       let arrived = true;
       if (e.hasIntel && Math.hypot(e.lastKnown.x - e.pos.x, e.lastKnown.z - e.pos.z) > 2.2) {
         const dir = navStep(this.nav, e, e.pos, e.lastKnown, e.speed * 0.8, dt,
-                            this.obstacles, 0.6, BOUNDS);
+                            this.obstacles, 0.6, this.bounds);
         e.fig.position.copy(e.pos);
         if (dir) {
           arrived = false;
@@ -466,7 +466,7 @@ export class Enemies {
     if (goal) {
       this._g.subVectors(goal, e.pos); this._g.y = 0;
       if (this._g.length() > 0.5) {
-        navStep(this.nav, e, e.pos, goal, e.speed, dt, this.obstacles, 0.6, BOUNDS);
+        navStep(this.nav, e, e.pos, goal, e.speed, dt, this.obstacles, 0.6, this.bounds);
         e.fig.position.copy(e.pos);
       }
     }

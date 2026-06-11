@@ -1,23 +1,27 @@
-// world.js — THE HOUSE. Mission 1 of THE LONG WAY HOME: your toy plane has
-// crashed into a stranger's living room. The house is a floor plan, not an
-// arena: LIVING ROOM → HALLWAY → KITCHEN + STUDY off it → the FRONT DOOR.
-//
-// Everything here is data the rest of the game consumes: meshes for the eyes,
+// world.js — every ENVIRONMENT in the campaign, one builder per mission world.
+// A world is data the rest of the game consumes: meshes for the eyes,
 // `obstacles` (Box3) for movement/bullets/line-of-sight, `coverPoints` for the
-// AI, `BOUNDS` for the walkable rect, and `exit` for the breach objective.
+// AI, `bounds` for the walkable rect, `nav` for pathfinding, `exit` for the
+// breach objective, `map` for the tactical camera, and any mission props
+// (supply drops, the radio). Missions name their world by id — the world is
+// MISSION DATA, not a global.
 
 import * as THREE from 'three';
 import { NavGrid } from './navgrid.js';
 
-// World scale. The original house was authored compact; everything reads its
+// World scale. The house was authored compact; everything reads its
 // coordinates through WS so the rooms breathe: positions always stretch, BIG
 // furniture scales its body too, and knee-high gameplay props keep their true
 // size (low cover must stay knee-high for the crouch game to read).
 export const WORLD_SCALE = 1.4;
 const WS = WORLD_SCALE;
 
-// Walkable interior (just inside the outer walls).
-export const BOUNDS = { minX: -6.5 * WS, maxX: 153.5 * WS, minZ: -45 * WS, maxZ: 45 * WS };
+// Build the world a mission asks for.
+export function createWorld(worldId = 'house') {
+  const build = WORLDS[worldId];
+  if (!build) throw new Error(`unknown world: ${worldId}`);
+  return build();
+}
 
 // Canvas-painted textures: no asset files, real surfaces. Each painter draws one
 // tile; RepeatWrapping turns it into a floor's worth of material.
@@ -107,7 +111,11 @@ function fabricTexture(base) {
   }, 5, 5);
 }
 
-export function createWorld() {
+// --- THE HOUSE — Mission 1: CRASH SITE. A floor plan, not an arena:
+// LIVING ROOM → HALLWAY → KITCHEN + STUDY off it → the FRONT DOOR.
+function buildHouse() {
+  // Walkable interior (just inside the outer walls).
+  const bounds = { minX: -6.5 * WS, maxX: 153.5 * WS, minZ: -45 * WS, maxZ: 45 * WS };
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x232c40);            // dusk through the windows
   scene.fog = new THREE.Fog(0x232c40, 180, 475);
@@ -409,7 +417,15 @@ export function createWorld() {
 
   // Bake the walkability grid AFTER all furniture is placed — every AI
   // routes around the house with this.
-  const nav = new NavGrid(BOUNDS, obstacles);
+  const nav = new NavGrid(bounds, obstacles);
 
-  return { scene, obstacles, coverPoints, exit, exitGlow: glow, nav, supplies, radio };
+  return {
+    scene, obstacles, coverPoints, bounds, nav,
+    exit, exitGlow: glow, supplies, radio,
+    map: { x: 103, height: 162 },     // tactical-view camera for this floor plan
+  };
 }
+
+// The registry. M2's porch, the street, the storm drain — they land here,
+// one builder each, and a mission def points at them by id.
+const WORLDS = { house: buildHouse };

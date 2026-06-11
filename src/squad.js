@@ -25,10 +25,10 @@ const MEDIC_HEAL_RATE = 4;   // hp/sec near the medic — recovery, not a free r
 const MEDIC_RANGE = 7;
 
 export class Squad {
-  constructor(scene, obstacles, nav) {
+  constructor(scene, obstacles, nav, bounds) {
     this.nav = nav;
     this.members = SQUAD_ORDER.map((key, i) => {
-      const s = new Soldier(scene, CLASSES[key], obstacles, nav);
+      const s = new Soldier(scene, CLASSES[key], obstacles, nav, bounds);
       // Rally EAST of the wreck — clamped to standable ground, because a spawn
       // overlapping ANY furniture is a soldier that can never move.
       const open = nav.nearestOpen((2.5 + i * 2.7) * WORLD_SCALE, (-8 - (i % 2) * 2.6) * WORLD_SCALE);
