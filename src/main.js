@@ -576,14 +576,18 @@ function handleInteract(dt) {
     enemies.takedown(cand, squad.active.position);
     sfx.takedown();
   }
-  // Cover affordances: offer the snap when you're near it, the pop when
-  // you're in it.
-  const showPop = !mapMode && a.alive && a.inCover && !a.aiming && !cand;
+  // Cover affordances: the snap when you're near it; in it, the pop (low
+  // cover), the lean (at a tall face's corner), or directions to one.
+  const inCoverIdle = !mapMode && a.alive && a.inCover && !a.aiming && !cand;
   const showTake = !mapMode && a.alive && !a.inCover && a.coverNear && !a.aiming && !cand;
-  if (showPop || showTake) {
-    peekEl.textContent = showPop ? 'Z  POP OUT' : 'C  TAKE COVER';
+  if (inCoverIdle) {
+    const tall = a.coverBox && a.coverBox.max.y > 1.45;
+    peekEl.textContent = !tall ? 'Z  POP OUT'
+      : (a.canLean ? 'Z  LEAN OUT' : 'A/D  SLIDE TO A CORNER');
+  } else if (showTake) {
+    peekEl.textContent = 'C  TAKE COVER';
   }
-  peekEl.classList.toggle('show', showPop || showTake);
+  peekEl.classList.toggle('show', inCoverIdle || showTake);
 }
 
 function handleAbility(aim) {

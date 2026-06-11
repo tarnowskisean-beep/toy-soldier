@@ -67,6 +67,7 @@ export class Soldier {
     this.inCover = false;    // attached to a cover face (C to enter/exit)
     this.coverBox = null;    // the obstacle we're hugging
     this.coverSide = null;   // which face: 'px' | 'nx' | 'pz' | 'nz'
+    this.canLean = 0;        // -1/+1 when a tall face's corner is in reach
     this.sprinting = false;  // Shift held: fast, loud, easy to spot, wild aim
 
     // AI state
@@ -156,12 +157,14 @@ export class Soldier {
     this.figure.userData.animate(this._walkPhase, this._animAmp);
   }
 
-  // Find the nearest pop-over-able cover face (top between knee and chest)
-  // in ANY direction within reach. Returns { box, side, dist } or null.
+  // Find the nearest usable cover face in ANY direction within reach.
+  // LOW cover (top ≤1.45) = pop over it. TALL cover (boxes, walls, door
+  // frames) = lean out at its corners. Returns
+  // { box, side, dist, tall, nearEdge } or null.
   _findCoverFace(radius = 2.4) {
     let best = null;
     for (const b of this.obstacles) {
-      if (b.max.y < 0.7 || b.max.y > 1.45) continue;
+      if (b.max.y < 0.7) continue;
       // Distance from us to the box (0 if overlapping its footprint).
       const dx = Math.max(b.min.x - this.position.x, 0, this.position.x - b.max.x);
       const dz = Math.max(b.min.z - this.position.z, 0, this.position.z - b.max.z);
@@ -171,7 +174,13 @@ export class Soldier {
       let side;
       if (dx >= dz) side = this.position.x > b.max.x ? 'px' : 'nx';
       else side = this.position.z > b.max.z ? 'pz' : 'nz';
-      best = { box: b, side, dist: d };
+      const tall = b.max.y > 1.45;
+      // Near one of this face's ends? (That's where leaning works.)
+      const along = (side === 'px' || side === 'nx')
+        ? [this.position.z, b.min.z, b.max.z]
+        : [this.position.x, b.min.x, b.max.x];
+      const nearEdge = (along[0] - along[1] < 1.7) || (along[2] - along[0] < 1.7);
+      best = { box: b, side, dist: d, tall, nearEdge };
     }
     return best;
   }
@@ -198,8 +207,12 @@ export class Soldier {
 
   // ---------- PLAYER control ----------
   _controlPlayer(input, dt) {
-    this.coverNear = !this.inCover && !!this._findCoverFace();
-    this.peeking = this.inCover && this.aiming;
+    const face = this.inCover ? null : this._findCoverFace();
+    // Only offer the snap where it BUYS something: any low cover, or a tall
+    // face near its corner (mid-wall hugging is a screensaver).
+    this.coverNear = !!(face && (!face.tall || face.nearEdge));
+    this.peeking = false;
+    this.canLean = 0;
     // Sights slow the mouse for fine aim (the scope, even more).
     const sens = MOUSE_SENS * (this.zoomed ? 0.4 : this.aiming ? 0.65 : 1);
     this.yaw -= input.mouseDX * sens;
@@ -218,11 +231,24 @@ export class Soldier {
     const len = Math.hypot(mx, mz);
 
     // --- IN COVER: sticky. A/D slide along the face; pushing straight away
-    // (or sprinting) steps out; everything else stays glued. ---
+    // (or sprinting) steps out; everything else stays glued. LOW cover pops
+    // over the top when you aim; TALL cover LEANS OUT past its corners. ---
     if (this.inCover && this.coverBox) {
       const b = this.coverBox;
       const n = this.coverSide === 'px' ? [1, 0] : this.coverSide === 'nx' ? [-1, 0]
               : this.coverSide === 'pz' ? [0, 1] : [0, -1];
+      const tall = b.max.y > 1.45;
+      const isX = n[0] !== 0;                      // normal on x → tangent on z
+      const tMin = isX ? b.min.z : b.min.x;
+      const tMax = isX ? b.max.z : b.max.x;
+      const tCoord = isX ? this.position.z : this.position.x;
+      if (tall) {
+        if (tCoord - tMin < 1.7) this.canLean = -1;
+        else if (tMax - tCoord < 1.7) this.canLean = 1;
+      }
+      const leaning = tall && this.aiming && this.canLean !== 0;
+      this.peeking = this.aiming && (!tall || leaning);
+
       if (len > 0) {
         const ix = mx / len, iz = mz / len;
         if (ix * n[0] + iz * n[1] > 0.75 || input.isDown('ShiftLeft')) {
@@ -238,16 +264,28 @@ export class Soldier {
       }
       if (this.inCover) {
         this.sprinting = false;
-        // Glue to the hug line just off the face, clamped to its extent.
         const k = Math.min(1, dt * 12);
-        if (n[0] !== 0) {
+        // Lean drift: aiming at a corner eases you OUT past the edge; sights
+        // down eases you back BEHIND it. The clamp widens only mid-lean.
+        let lo = tMin - 0.2, hi = tMax + 0.2;
+        let drift = 0;
+        if (leaning) {
+          const target = this.canLean < 0 ? tMin - 0.95 : tMax + 0.95;
+          drift = (target - tCoord) * Math.min(1, dt * 8);
+          lo = tMin - 1.15; hi = tMax + 1.15;
+        } else if (tall && (tCoord < tMin + 0.25 || tCoord > tMax - 0.25)) {
+          // Sights down: settle FULLY behind the corner — no exposed toes.
+          const back = Math.max(tMin + 0.35, Math.min(tMax - 0.35, tCoord));
+          drift = (back - tCoord) * Math.min(1, dt * 10);
+        }
+        if (isX) {
           const hugX = (n[0] > 0 ? b.max.x : b.min.x) + n[0] * 0.62;
           this.position.x += (hugX - this.position.x) * k;
-          this.position.z = Math.max(b.min.z - 0.2, Math.min(b.max.z + 0.2, this.position.z));
+          this.position.z = Math.max(lo, Math.min(hi, this.position.z + drift));
         } else {
           const hugZ = (n[1] > 0 ? b.max.z : b.min.z) + n[1] * 0.62;
           this.position.z += (hugZ - this.position.z) * k;
-          this.position.x = Math.max(b.min.x - 0.2, Math.min(b.max.x + 0.2, this.position.x));
+          this.position.x = Math.max(lo, Math.min(hi, this.position.x + drift));
         }
         return;
       }
@@ -291,6 +329,7 @@ export class Soldier {
   _controlAI(dt, ctx) {
     this.peeking = false;
     this.coverNear = false;
+    this.canLean = 0;
     // Who should we shoot? An explicit ATTACK target if it's still alive,
     // otherwise the nearest enemy within our effective range.
     let engage = (this.order === ORDER.ATTACK && this._targetAlive())
