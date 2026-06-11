@@ -578,7 +578,7 @@ function handleInteract(dt) {
   const showPop = !mapMode && a.alive && a.inCover && !a.aiming && !cand;
   const showTake = !mapMode && a.alive && !a.inCover && a.coverNear && !a.aiming && !cand;
   if (showPop || showTake) {
-    peekEl.textContent = showPop ? 'RMB  POP OUT' : 'C  TAKE COVER';
+    peekEl.textContent = showPop ? 'RIGHT-CLICK  POP OUT' : 'C  TAKE COVER';
   }
   peekEl.classList.toggle('show', showPop || showTake);
 }
@@ -659,7 +659,7 @@ function updateDamageHUD() {
 
 function updateAbilityHUD() {
   const a = squad.active, ab = a.cls.ability;
-  abilityEl.textContent = (ab.input === 'aim' ? 'RMB' : 'SPACE') + '  ' + ab.name;
+  abilityEl.textContent = (ab.input === 'aim' ? 'RIGHT-CLICK' : 'SPACE') + '  ' + ab.name;
   const engaged = (ab.key === 'suppress' && a.suppressing) || (ab.key === 'scope' && a.zoomed);
   abilityEl.classList.toggle('active', engaged);
   abilityEl.classList.toggle('cooldown', ab.input === 'press' && a.abilityCd > 0);
