@@ -232,6 +232,39 @@ export class MissionRunner {
     }
   }
 
+  // Where should the objective beacon hover RIGHT NOW? The nearest thing
+  // that advances the current stage.
+  currentTarget() {
+    const st = this.stage();
+    if (!st || this.state !== 'active' || !this.squad) return null;
+    const a = this.squad.active;
+    if (st.type === 'regroup') {
+      let best = null, bd = 1e9;
+      for (const m of this.squad.members) {
+        if (!m.crashDowned) continue;
+        const d = m.position.distanceTo(a.position);
+        if (d < bd) { bd = d; best = m; }
+      }
+      return best ? { x: best.position.x, z: best.position.z } : null;
+    }
+    if (st.type === 'multi') {
+      let best = null, bd = 1e9;
+      for (const s of this.world.supplies) {
+        if (s.taken) continue;
+        const d = Math.hypot(s.x - a.position.x, s.z - a.position.z);
+        if (d < bd) { bd = d; best = { x: s.x, z: s.z }; }
+      }
+      const r = this.world.radio;
+      if (r && r.alive) {
+        const d = Math.hypot(r.pos.x - a.position.x, r.pos.z - a.position.z);
+        if (d < bd) best = { x: r.pos.x, z: r.pos.z };
+      }
+      return best;
+    }
+    if (st.type === 'escape') return { x: this.world.exit.x, z: this.world.exit.z };
+    return null;
+  }
+
   statusText(enemies) {
     const st = this.stage();
     if (!st) return '';

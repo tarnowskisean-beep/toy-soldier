@@ -34,6 +34,7 @@ export function updateSquadHUD(squad, kills) {
     const pct = Math.max(0, (m.health / m.maxHealth) * 100);
     c.fill.style.width = pct + '%';
     c.root.classList.toggle('active', i === squad.activeIndex && m.alive);
+    c.root.classList.toggle('picked', squad.selected === m && m.alive);
     c.root.classList.toggle('dead', !m.alive);
     // The active soldier is "you"; others show their standing order.
     c.order.textContent = m.alive

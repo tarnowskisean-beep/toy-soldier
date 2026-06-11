@@ -25,7 +25,8 @@ const MEDIC_HEAL_RATE = 4;   // hp/sec near the medic — recovery, not a free r
 const MEDIC_RANGE = 7;
 
 export class Squad {
-  constructor(scene, obstacles, nav, bounds) {
+  constructor(scene, obstacles, nav, bounds, coverPoints) {
+    this.coverPoints = coverPoints || [];
     this.nav = nav;
     this.members = SQUAD_ORDER.map((key, i) => {
       const s = new Soldier(scene, CLASSES[key], obstacles, nav, bounds);
@@ -43,6 +44,7 @@ export class Squad {
     // 'hold' = nobody shoots (point-blank self-defense only) — the order
     // that lets the whole squad SNEAK with you.
     this.fireMode = 'free';
+    this.selected = null;    // one squadmate singled out for the next order
 
     // Glowing ring under the soldier you're currently controlling.
     this.ring = new THREE.Mesh(
@@ -89,7 +91,9 @@ export class Squad {
     }
   }
 
-  // --- Orders apply to every OTHER living squadmate (not the one you control) ---
+  // --- Orders apply to every OTHER living squadmate — or, when one man is
+  // SELECTED (G on a squadmate under the crosshair), to HIM alone. That's
+  // how you post a sniper, send a flanker, and build a crossfire. ---
   orderMove(point) {
     // Each man gets his own spot in a small wedge on the point (soldiers
     // don't collide with each other — same destination = men standing inside
@@ -103,19 +107,28 @@ export class Squad {
       m.order = ORDER.MOVE;
       m.orderPoint.set(open.x, 0, open.z);
       m.target = null;
+      m._coverSpot = null;
     });
   }
   orderAttack(enemy) {
-    this._eachOther((m) => { m.order = ORDER.ATTACK; m.target = enemy; });
+    this._eachOther((m) => { m.order = ORDER.ATTACK; m.target = enemy; m._coverSpot = null; });
   }
   orderHold() {
     this._eachOther((m) => { m.order = ORDER.HOLD; m.target = null; });
   }
   orderFollow() {
-    this._eachOther((m) => { m.order = ORDER.FOLLOW; m.target = null; });
+    this._eachOther((m) => { m.order = ORDER.FOLLOW; m.target = null; m._coverSpot = null; });
   }
 
+  // One man or everyone: if someone is selected, the order is HIS, and the
+  // selection clears (one order per selection — deliberate, like a callout).
   _eachOther(fn) {
+    if (this.selected && this.selected.alive && this.selected !== this.active) {
+      fn(this.selected);
+      this.selected = null;
+      return;
+    }
+    this.selected = null;
     for (let i = 0; i < this.members.length; i++) {
       if (i === this.activeIndex || !this.members[i].alive) continue;
       fn(this.members[i]);
@@ -138,6 +151,7 @@ export class Squad {
         bullets: ctx.bullets,
         free: ctx.free,
         fireMode: this.fireMode,
+        coverPoints: this.coverPoints,
         formationSlot: isActive ? null : slots[s++ % slots.length],
       });
     }

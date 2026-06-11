@@ -76,6 +76,7 @@
         background: rgba(15, 30, 15, 0.62); border: 2px solid rgba(255,255,255,0.15);
         transition: border-color 0.1s, opacity 0.2s; }
       .card.active { border-color: var(--ring); box-shadow: 0 0 14px var(--ring); }
+      .card.picked { border-color: #6fe0ff; box-shadow: 0 0 14px rgba(111,224,255,0.75); }
       .card.dead { opacity: 0.4; filter: grayscale(1); }
       .card-top { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: bold; }
       .card-top .key { background: var(--ring); color: #0a1a0a; border-radius: 3px; padding: 0 5px; font-size: 12px; }
@@ -225,7 +226,8 @@
         <div class="row"><b>WASD</b> move • <b>MOUSE</b> look • <b>Z</b> aim on/off <i>(sights stay up — click to fire)</i> • <b>R</b> reload</div>
         <div class="row"><b>SHIFT</b> sprint • <b>C</b> take cover / crouch • <b>E</b> silent takedown <i>(from behind)</i></div>
         <div class="row">In cover: <b>Z</b> pop out over low cover, or <b>LEAN around corners</b> of tall cover • <b>A/D</b> slide • step back or <b>SHIFT</b> to leave</div>
-        <div class="row"><b>1–4 / TAB</b> switch • <b>Q</b> order • <b>F</b> regroup • <b>H</b> hold • <b>X</b> hold fire / weapons free • <b>M</b> map</div>
+        <div class="row"><b>1–4 / TAB</b> switch • <b>Q</b> order all • <b>G</b> on a squadmate: next order is HIS alone • <b>F</b> regroup • <b>H</b> take positions</div>
+        <div class="row"><b>X</b> hold fire / weapons free • <b>M</b> map • follow the <b>green beacon</b> to the current objective</div>
         <div class="row"><b>E</b> also REVIVES a downed buddy <i>(hold — medic is fastest)</i></div>
         <div class="row"><b>SPACE</b> grenade / revive / dig in <i>(by class)</i></div>
         <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>

@@ -75,6 +75,7 @@ export class Soldier {
     this.order = ORDER.FOLLOW;
     this.orderPoint = new THREE.Vector3();   // destination for MOVE orders
     this.target = null;                      // enemy object for ATTACK orders
+    this._coverSpot = null;                  // where HOLD digs in under fire
 
     // Walk-cycle state: phase advances with ground covered, amp blends
     // stance ↔ stride so stopping doesn't freeze mid-step.
@@ -350,6 +351,22 @@ export class Soldier {
     if (this.order === ORDER.FOLLOW) goal = ctx.formationSlot;
     else if (this.order === ORDER.MOVE) goal = this.orderPoint;
     else if (this.order === ORDER.ATTACK && this._targetAlive()) goal = this.target.pos;
+    else if (this.order === ORDER.HOLD && engage && ctx.coverPoints) {
+      // "Take positions!" — a HOLDing soldier under fire digs into the
+      // nearest cover instead of kneeling in the open.
+      if (!this._coverSpot) {
+        // NEARBY cover only — digging in must respect where you were posted.
+        let best = null, bd = 6;
+        for (const c of ctx.coverPoints) {
+          const d = c.distanceTo(this.position);
+          if (d < bd) { bd = d; best = c; }
+        }
+        if (best) this._coverSpot = best.clone();
+      }
+      if (this._coverSpot && this.position.distanceTo(this._coverSpot) > 0.7) {
+        goal = this._coverSpot;
+      }
+    }
 
     if (goal) {
       this._t.subVectors(goal, this.position); this._t.y = 0;

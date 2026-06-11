@@ -46,7 +46,7 @@ const bootDef = savedDef || MISSIONS[0];   // the menu idles over mission 1's se
 const world = createWorld(bootDef.world);
 const { scene, obstacles, coverPoints, exitGlow, nav, bounds } = world;
 const input = new Input(renderer.domElement);
-const squad = new Squad(scene, obstacles, nav, bounds);
+const squad = new Squad(scene, obstacles, nav, bounds, coverPoints);
 const bullets = new Bullets(scene, obstacles, bounds);
 const enemies = new Enemies(scene, obstacles, coverPoints, nav, bounds);
 const grenades = new Grenades(scene, obstacles, bounds);
@@ -315,6 +315,44 @@ const clock = new THREE.Clock();
 const muzzleLight = new THREE.PointLight(0xffd9a0, 0, 14);
 scene.add(muzzleLight);
 
+// The SELECTION marker (G on a squadmate) and the OBJECTIVE beacon — both
+// drawn over everything: command information beats occlusion.
+const selMarker = new THREE.Mesh(
+  new THREE.ConeGeometry(0.45, 0.8, 4),
+  new THREE.MeshBasicMaterial({ color: 0x6fe0ff, transparent: true, opacity: 0.95, depthTest: false })
+);
+selMarker.rotation.x = Math.PI;
+selMarker.renderOrder = 6;
+selMarker.visible = false;
+scene.add(selMarker);
+const beacon = new THREE.Mesh(
+  new THREE.OctahedronGeometry(0.7),
+  new THREE.MeshBasicMaterial({ color: 0x6aff8a, transparent: true, opacity: 0.8, depthTest: false })
+);
+beacon.renderOrder = 5;
+beacon.visible = false;
+scene.add(beacon);
+
+// Which squadmate is under the crosshair? (For G — single-man orders.)
+function mateUnderCrosshair() {
+  raycaster.setFromCamera(SCREEN_CENTER, camera);
+  const ray = raycaster.ray;
+  let best = null, bestT = Infinity;
+  for (const m of squad.members) {
+    if (!m.alive || m === squad.active) continue;
+    const ox = m.position.x - ray.origin.x;
+    const oy = 1.1 - ray.origin.y;
+    const oz = m.position.z - ray.origin.z;
+    const t = ox * ray.direction.x + oy * ray.direction.y + oz * ray.direction.z;
+    if (t < 0 || t > bestT) continue;
+    const px = ray.origin.x + ray.direction.x * t;
+    const py = ray.origin.y + ray.direction.y * t;
+    const pz = ray.origin.z + ray.direction.z * t;
+    if (Math.hypot(px - m.position.x, py - 1.1, pz - m.position.z) < 1.5) { best = m; bestT = t; }
+  }
+  return best;
+}
+
 function loop() {
   requestAnimationFrame(loop);
   tick(Math.min(clock.getDelta(), 0.05));
@@ -350,6 +388,34 @@ function tick(dt) {
     // Z = aim toggle on the keyboard — right-click is OPTIONAL everywhere
     // (Mac trackpads in pointer lock may never deliver one).
     if (input.consume('KeyZ')) input.aiming = !input.aiming;
+    // G = single out the squadmate under the crosshair; your next Q/F/H is
+    // HIS order alone. G again (or at nothing) releases him.
+    if (input.consume('KeyG')) {
+      const mate = mateUnderCrosshair();
+      if (mate && squad.selected !== mate) {
+        squad.selected = mate;
+        barks.say(mate.figure, 'Sir?', '#9fe8ff');
+      } else {
+        squad.selected = null;
+      }
+    }
+    if (squad.selected && (!squad.selected.alive || squad.selected === squad.active)) {
+      squad.selected = null;
+    }
+    selMarker.visible = !!squad.selected && !mapMode;
+    if (squad.selected) {
+      selMarker.position.set(squad.selected.position.x, 3.3 + Math.sin(performance.now() * 0.006) * 0.2, squad.selected.position.z);
+    }
+
+    // The objective beacon hovers over the current goal, with live distance.
+    const tgt = mission.currentTarget();
+    beacon.visible = !!tgt;
+    let distTxt = '';
+    if (tgt) {
+      beacon.position.set(tgt.x, 4.1 + Math.sin(performance.now() * 0.004) * 0.45, tgt.z);
+      beacon.rotation.y += dt * 2.2;
+      distTxt = `   ▸ ${Math.round(Math.hypot(tgt.x - squad.active.position.x, tgt.z - squad.active.position.z))}m`;
+    }
 
     handleAbility(aim);
     handleInteract(dt);
@@ -390,7 +456,7 @@ function tick(dt) {
 
     // --- Mission objective ---
     mission.update(dt, squad, enemies, bullets);
-    objectiveEl.textContent = mission.statusText(enemies);
+    objectiveEl.textContent = mission.statusText(enemies) + distTxt;
     if (mission.state === 'won') onWin();
     else if (mission.state === 'lost') onLose();
   }
