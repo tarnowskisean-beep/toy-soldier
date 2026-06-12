@@ -556,19 +556,32 @@ function placeCamera(dt = 0) {
       // beats optimality for the half-second you're up.
     }
   } else if (aimT > 0.25) {
-    const clearFor = (sign) => {
+    // Score a shoulder by BOTH the boom (can the camera sit back) and the
+    // VIEW (what fills the screen from there). Boom-only scoring happily
+    // parked the camera where two-thirds of the frame was the wall beside
+    // you — a clear arm pointing at cardboard.
+    const scoreFor = (sign) => {
       const cx = a.position.x + rx * sideMag * sign;
       const cz = a.position.z + rz * sideMag * sign;
-      let c = boomLen;
+      let boom = boomLen;
       const ex2 = cx + dx * boomLen, ey2 = ty + dy * boomLen, ez2 = cz + dz * boomLen;
       for (const b of cameraBlockers) {
         const t = segBoxEntryT(cx, ty, cz, ex2, ey2, ez2, b);
-        if (t < Infinity) c = Math.min(c, t * boomLen);
+        if (t < Infinity) boom = Math.min(boom, t * boomLen);
       }
-      return c;
+      // From where the camera would actually sit, how far ahead is open?
+      const camX = cx + dx * boom, camY = ty + dy * boom, camZ = cz + dz * boom;
+      const FWD = 16;
+      let view = FWD;
+      const fx2 = camX - dx * FWD, fy2 = camY - dy * FWD, fz2 = camZ - dz * FWD;
+      for (const b of cameraBlockers) {
+        const t = segBoxEntryT(camX, camY, camZ, fx2, fy2, fz2, b);
+        if (t < Infinity) view = Math.min(view, t * FWD);
+      }
+      return boom + view * 1.5;
     };
     // Hysteresis: only swap when the other shoulder is clearly better.
-    if (clearFor(-shoulderSign) > clearFor(shoulderSign) * 1.3 + 0.4) shoulderSign = -shoulderSign;
+    if (scoreFor(-shoulderSign) > scoreFor(shoulderSign) * 1.25 + 0.5) shoulderSign = -shoulderSign;
   }
   if (!a.peeking) peekShoulderLock = false;   // re-decide on the NEXT pop
   shoulderSmooth += (shoulderSign - shoulderSmooth) * Math.min(1, dt * 8);
