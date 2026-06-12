@@ -19,23 +19,25 @@ export const MISSIONS = [
     world: 'house',
     sector: 'THE HOUSE — GROUND FLOOR, DUSK',
     briefing:
-      'We came down hard through the window and the squad got thrown across the ' +
-      'room. You are ALONE at the wreck — Heavy, Sniper and Medic are lying out ' +
-      'there between the furniture, and the tan found the crash before you woke ' +
-      'up. Get your men on their feet. Recover the supply drops. Their field ' +
-      'radio is in the STUDY: while it lives, any tan who marks you will run to ' +
-      'call the porch reserve down on your head. Cut it. Then breach the front ' +
-      'door and get out.',
+      'You came to at the wreck, ALONE. The HEAVY is down a few steps away — ' +
+      'a tan already stands over him. The tan DRAGGED the MEDIC across the ' +
+      'house to a holding pen in the KITCHEN corner. The SNIPER went to ground ' +
+      'somewhere in the STUDY and is waiting for friendly boots. Get your men ' +
+      'back. Recover the supply drops. Their field radio is in the STUDY: ' +
+      'while it lives, any tan who marks you will run to call the porch ' +
+      'reserve down on your head. Cut it. Then breach the front door.',
     winText: 'ESCAPED THE HOUSE — ONTO THE PORCH',
-    // Who the crash scattered where (member index in SQUAD_ORDER).
+    // Who ended up where (member index in SQUAD_ORDER). pose: 'downed' (flat,
+    // 1.8s wake), 'prison' (flat, in the pen), 'hiding' (crouched upright,
+    // joins fast and healthy).
     scatter: [
-      { member: 1, x: 16, z: -32 },   // HEAVY — short of the couch
-      { member: 3, x: 24, z: 12 },    // MEDIC — mid-room, under the table's guns
-      { member: 2, x: 52, z: 14 },    // SNIPER — deep east, in the toy blocks
+      { member: 1, x: 4, z: 6 },                          // HEAVY — by the wreck
+      { member: 3, x: 142, z: -38, pose: 'prison' },      // MEDIC — kitchen pen
+      { member: 2, x: 114, z: 36, pose: 'hiding' },       // SNIPER — study books
     ],
     stages: [
       { type: 'regroup', text: 'FIND YOUR SQUAD',
-        toast: 'YOUR SQUAD IS OUT THERE — get them on their feet' },
+        toast: 'Your men are scattered ACROSS THE HOUSE — follow the beacon' },
       { type: 'multi', toast: 'RECOVER THE SUPPLY DROPS — and CUT THAT RADIO',
         parts: [
           { type: 'collect', text: 'SUPPLIES',
@@ -49,9 +51,9 @@ export const MISSIONS = [
     // space between fights. facing is radians (atan2(x, z) style).
     // (baseY puts a man ON something — the watchtower lookout.)
     enemyLayout: [
-      // LIVING ROOM — a guard at each downed squadmate, a book-stack post,
+      // LIVING ROOM — the wreck-watcher (your first takedown), a book post,
       // a roaming scout, and the door guard.
-      { x: 12, z: -26, facing: 2.55 },                                  // couch guard (over the Heavy)
+      { x: 10, z: 2, facing: -0.98 },                                   // standing over the Heavy
       { x: 32.5, z: 9.5, facing: -1.29 },                               // table outpost (over the Medic)
       { x: 49, z: 20, facing: 2.68 },                                   // block post (over the Sniper)
       { x: 45.5, z: -16.5, facing: -1.8 },                              // book-stack post
@@ -61,9 +63,10 @@ export const MISSIONS = [
       // HALLWAY — a sentry + the corridor scout.
       { x: 85, z: -13, facing: -1.2 },
       { x: 84.5, z: 30, facing: Math.PI, type: 'scout', patrol: { x: 84.5, z: -36 } },
-      // KITCHEN — gunner at the table + a rifle over the supply drop.
+      // KITCHEN — gunner at the table + the POW-pen guard.
       { x: 123, z: -27, facing: -Math.PI / 2, type: 'gunner' },
-      { x: 136, z: -30, facing: -2.55 },
+      { x: 140.5, z: -34, facing: 2.78 },                               // pen guard
+
       // STUDY — the radio room: gunner guard + desk post + scout.
       { x: 131, z: 25, facing: -1.57, type: 'gunner' },                 // radio guard
       { x: 122, z: 26, facing: -Math.PI / 2 },

@@ -416,6 +416,12 @@ function buildHouse() {
 
   // --- KITCHEN ---
   box(4, 14.5, 4.5, 149, -39, 0xcfc9bd);                               // fridge
+  // The POW PEN: a sandbag holding cell in the corner where the tan keep
+  // their prisoner. One gap on the north-west side — guarded.
+  box(0.9, 1.05, 3.4, 139.8, -38, 0x8a7a4a, { cover: true });          // west wall
+  box(0.9, 1.05, 3.4, 144.2, -38, 0x8a7a4a, { cover: true });          // east wall
+  box(3.4, 1.05, 0.9, 142, -40.2, 0x8a7a4a, { cover: true });          // south wall
+  box(1.3, 1.4, 1.3, 144, -35.8, 0x7a4a22, { cover: true });           // gate crate
   box(9, 0.7, 6, 120, -23, 0x2b1709, { y: 6.5, obstacle: false });     // table top
   for (const [lx, lz] of [[116.3, -25.2], [123.7, -25.2], [116.3, -20.8], [123.7, -20.8]])
     box(0.9, 6.4, 0.9, lx, lz, 0x2b1709, { cover: true });

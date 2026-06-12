@@ -45,7 +45,8 @@ export class MissionRunner {
     enemies.lamp = this.world.lamp || null;
     enemies.reserveLayout = this.def.reserve || null;
 
-    // The crash threw them across the room. They lie where they landed.
+    // The squad ended up all over the house: thrown by the crash, dragged
+    // to a pen, or gone to ground. Pose tells each man's story at a glance.
     if (this.def.scatter) {
       for (const s of this.def.scatter) {
         const m = squad.members[s.member];
@@ -53,10 +54,18 @@ export class MissionRunner {
         m.alive = false;
         m.downed = true;
         m.crashDowned = true;
+        m._pose = s.pose || 'downed';
         m.health = 0;
         m.figure.position.copy(m.position);
-        m.figure.position.y = 0.3;
-        m.figure.rotation.z = Math.PI / 2;
+        if (m._pose === 'hiding') {
+          // Tucked low and upright, waiting for friendly boots.
+          m.figure.position.y = 0;
+          m.figure.rotation.z = 0;
+          m.figure.scale.y = 0.6;
+        } else {
+          m.figure.position.y = 0.3;
+          m.figure.rotation.z = Math.PI / 2;
+        }
       }
     }
     if (this.stage() && this.onToast) this.onToast(this.stage().toast || '');
@@ -113,13 +122,19 @@ export class MissionRunner {
         if (!o.alive) continue;
         if (o.position.distanceTo(m.position) < RESCUE_RANGE) { company = true; break; }
       }
+      const need = m._pose === 'hiding' ? 0.6 : RESCUE_TIME;
       const t = (this.rescueT.get(m) || 0);
       if (company) {
         this.rescueT.set(m, t + dt);
-        if (t + dt >= RESCUE_TIME) {
-          m.revive(0.6);
+        if (t + dt >= need) {
+          m.revive(m._pose === 'hiding' ? 0.85 : 0.6);
           sfx.pickup();
-          barks.say(m.figure, pick(['On my feet — thanks!', 'Ow. Where are they?', 'Back in it!']), '#7dff7d');
+          const line = m._pose === 'hiding'
+            ? pick(['Thought you would never come.', 'I kept my head down, sir.'])
+            : m._pose === 'prison'
+              ? pick(['They had me in a CAGE.', 'Took you long enough — let me out!'])
+              : pick(['On my feet — thanks!', 'Ow. Where are they?', 'Back in it!']);
+          barks.say(m.figure, line, '#7dff7d');
           remaining--;
         }
       } else if (t > 0) {

@@ -16,24 +16,23 @@ Get your squad back. Get your gear back. Kill their radio. Get out.
 
 ## The four acts
 
-### Act 1 — ALONE (regroup)                                ~5 min
-You control the Leader, solo. The other three were thrown across the living
-room and lie DOWNED where they landed:
+### Act 1 — ALONE (regroup)                                ~6 min
+You control the Leader, solo — and your men are scattered ACROSS THE HOUSE,
+each rescue its own scene (the beacon leads to the nearest):
 
-| Who | Where he landed | What guards him |
+| Who | Where | The scene |
 |---|---|---|
-| HEAVY | short of the couch, south wall | 2-man rifle post that found him first |
-| MEDIC | mid-room, north of the rug lanes | the coffee-table outpost overlooks him |
-| SNIPER | deep east, by the toy blocks | a scout patrol crosses his lane |
+| HEAVY | steps from the wreck | a tan stands over him — your first takedown, the tutorial beat |
+| MEDIC | a sandbag POW PEN in the far kitchen corner | captured; pen guard + the kitchen gunner — a real raid |
+| SNIPER | gone to ground in the study book rows | hiding upright; joins fast and healthy ('Thought you would never come.') |
 
-Walk to a downed man and stay beside him ~2s to get him on his feet (they're
-stunned, not shot — no medic needed; this is the act that TEACHES the revive
-verb). Each rescue is a designed encounter: sneak past the guards crouched, or
-pick a fight one post at a time while you're still a one-man army.
+Walk to a man and stay beside him to get him up (the hider joins almost
+instantly at 85% — the others wake slower at 60%). Three rescues, three
+verbs: a takedown, an assault or sneak on a held position, a search.
 
-Design intent: the player learns crouch/stealth/orders while weak, meets the
-squad one at a time, and the room is too dangerous to rush — you have 1 body
-and the medic isn't up yet.
+Design intent: Act 1 alone walks you across the entire map while weak —
+you learn crouch/stealth/cover en route, and the house's geography (which
+Act 2 reuses) is learned by NEED, not by wandering.
 
 ### Act 2 — GEAR & THE ALARM (parallel objectives)          ~8 min
 With the squad up, two objectives open AT ONCE (do them in any order):
