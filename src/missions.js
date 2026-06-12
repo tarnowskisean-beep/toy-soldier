@@ -25,7 +25,9 @@ export const MISSIONS = [
       'somewhere in the STUDY and is waiting for friendly boots. Get your men ' +
       'back. Recover the supply drops. Their field radio is in the STUDY: ' +
       'while it lives, any tan who marks you will run to call the porch ' +
-      'reserve down on your head. Cut it. Then breach the front door.',
+      'reserve down on your head. Cut it. A plastic TANK patrols the kitchen ' +
+      '— bullets bounce off it. Blow it open with the Heavy’s bazooka or ' +
+      'the Sniper’s mines. Then breach the front door.',
     winText: 'ESCAPED THE HOUSE — ONTO THE PORCH',
     // Who ended up where (member index in SQUAD_ORDER). pose: 'downed' (flat,
     // 1.8s wake), 'prison' (flat, in the pen), 'hiding' (crouched upright,
@@ -38,11 +40,12 @@ export const MISSIONS = [
     stages: [
       { type: 'regroup', text: 'FIND YOUR SQUAD',
         toast: 'Your men are scattered ACROSS THE HOUSE — follow the beacon' },
-      { type: 'multi', toast: 'RECOVER THE SUPPLY DROPS — and CUT THAT RADIO',
+      { type: 'multi', toast: 'RECOVER THE SUPPLIES — CUT THE RADIO — KILL THAT TANK',
         parts: [
           { type: 'collect', text: 'SUPPLIES',
             items: [{ x: 89.5, z: -8 }, { x: 132, z: -36 }, { x: 126, z: 13 }] },
           { type: 'destroy', text: 'CUT THE ALARM' },
+          { type: 'tank', text: 'BLOW UP THE TANK' },
         ] },
       { type: 'escape', holdSeconds: 4,
         toast: 'BREACH THE FRONT DOOR — hold the doormat' },
@@ -77,6 +80,10 @@ export const MISSIONS = [
       { x: 84.5, z: 43.5, facing: Math.PI },
       { x: 78, z: 43, facing: 2.6 },
     ],
+    // THE TANK: armor patrolling the kitchen's open tile, between the door
+    // and the POW pen. Bullets bounce off — it falls to the Heavy's bazooka,
+    // the Sniper's mines in its lane, or (slowly) cooked frags.
+    tank: { x: 112, z: -12, facing: Math.PI / 2, patrol: { x: 144, z: -12 } },
     // The porch reserve — exists only if a runner reaches the radio.
     reserve: [
       { x: 82, z: 44, facing: Math.PI },
@@ -138,6 +145,10 @@ for (const def of MISSIONS) {
     if (e.patrol) { e.patrol.x *= WORLD_SCALE; e.patrol.z *= WORLD_SCALE; }
   }
   if (def.reserve) for (const r of def.reserve) { r.x *= WORLD_SCALE; r.z *= WORLD_SCALE; }
+  if (def.tank) {
+    def.tank.x *= WORLD_SCALE; def.tank.z *= WORLD_SCALE;
+    if (def.tank.patrol) { def.tank.patrol.x *= WORLD_SCALE; def.tank.patrol.z *= WORLD_SCALE; }
+  }
   if (def.stages) for (const st of def.stages) {
     if (!st.parts) continue;
     for (const p of st.parts) {

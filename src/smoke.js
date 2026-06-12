@@ -60,6 +60,16 @@ export function runSmoke() {
     g.step(5);
     check('enemies clearable', g.enemies.list.length === 0);
 
+    // The TANK: plastic armor that only a BLAST opens — two rocket-sized
+    // hits kill it. (Killed now so it can't shell the rescue walks below.)
+    const tank = g.mission.tank;
+    check('tank fielded and alive', !!tank && tank.alive);
+    tank.takeBlast(tank.pos, 7, 220);
+    check('tank takes blast damage', tank.hp < 400);
+    tank.takeBlast(tank.pos, 7, 220);
+    g.step(5);
+    check('tank destroyed by explosives', !tank.alive);
+
     // Rescue mechanic: stand beside each downed buddy until he's up.
     for (const m of g.squad.members) {
       if (!m.crashDowned) continue;
@@ -68,6 +78,21 @@ export function runSmoke() {
     }
     check('crash rescues (regroup stage)', g.squad.members.every((m) => !m.crashDowned));
     g.step(10);
+
+    // The class specials, through the real Space handler: the Heavy's bazooka
+    // and the Sniper's mine each burn one of their two charges.
+    g.squad.setActive(1);
+    g.input.pressed['Space'] = true;
+    g.step(1);
+    // (Ammo is the check — the rocket itself may already have detonated if
+    // the Heavy happened to stop near a wall.)
+    check('bazooka fires (charge spent)', g.squad.members[1].abilityAmmo === 1);
+    g.squad.setActive(2);
+    g.input.pressed['Space'] = true;
+    g.step(1);
+    check('mine planted (charge spent)',
+      g.squad.members[2].abilityAmmo === 1 && g.grenades.mines.length === 1);
+    g.squad.setActive(0);
     for (const s of g.world.supplies) { s.taken = true; s.crate.visible = false; s.ring.visible = false; }
     g.world.radio.hp = 0;
     g.step(10);

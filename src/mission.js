@@ -3,7 +3,8 @@
 // A stage is what the player is DOING right now:
 //   regroup — your crash-scattered squadmates lie downed; stand beside one to
 //             get him on his feet (any member can — they're stunned, not shot)
-//   multi   — several parts at once, any order (collect supplies / cut the radio)
+//   multi   — several parts at once, any order (collect supplies / cut the
+//             radio / blow up the tank)
 //   escape  — reach the exit zone and hold it, uncontested
 //
 // The runner also owns the mission props (supply crates bob, the radio lamp
@@ -11,6 +12,7 @@
 
 import { sfx } from './audio.js';
 import { barks, pick } from './barks.js';
+import { Tank } from './tank.js';
 
 const RESCUE_RANGE = 3.0;
 const RESCUE_TIME = 1.8;       // seconds beside a downed buddy to wake him
@@ -44,6 +46,11 @@ export class MissionRunner {
     enemies.radio = this.world.radio || null;
     enemies.lamp = this.world.lamp || null;
     enemies.reserveLayout = this.def.reserve || null;
+    // The mission's armor, if it fields any. Its hull joins the world's
+    // obstacle list — from here on it's a (driving) piece of furniture.
+    this.tank = this.def.tank
+      ? new Tank(this.scene, this.world.obstacles, this.def.tank)
+      : null;
 
     // The squad ended up all over the house: thrown by the crash, dragged
     // to a pen, or gone to ground. Pose tells each man's story at a glance.
@@ -87,10 +94,13 @@ export class MissionRunner {
     }
   }
 
-  update(dt, squad, enemies, bullets) {
+  update(dt, squad, enemies, bullets, grenades) {
     if (this.state !== 'active') return;
     this.t += dt;
     this._animateProps();
+    // The tank fights (and patrols, and smolders) through EVERY stage —
+    // it's a combatant that happens to also be an objective.
+    if (this.tank) this.tank.update(dt, squad, enemies, grenades);
 
     const st = this.stage();
     if (st.type === 'regroup') {
@@ -101,6 +111,7 @@ export class MissionRunner {
       for (const part of st.parts) {
         if (part.type === 'collect' && !this._collect(squad)) done = false;
         if (part.type === 'destroy' && !this._destroy(dt, squad, bullets)) done = false;
+        if (part.type === 'tank' && this.tank && this.tank.alive) done = false;
       }
       if (done) this._advance();
     } else if (st.type === 'escape') {
@@ -272,7 +283,11 @@ export class MissionRunner {
       const r = this.world.radio;
       if (r && r.alive) {
         const d = Math.hypot(r.pos.x - a.position.x, r.pos.z - a.position.z);
-        if (d < bd) best = { x: r.pos.x, z: r.pos.z };
+        if (d < bd) { bd = d; best = { x: r.pos.x, z: r.pos.z }; }
+      }
+      if (this.tank && this.tank.alive) {
+        const d = Math.hypot(this.tank.pos.x - a.position.x, this.tank.pos.z - a.position.z);
+        if (d < bd) best = { x: this.tank.pos.x, z: this.tank.pos.z };
       }
       return best;
     }
@@ -301,6 +316,8 @@ export class MissionRunner {
           if (!r.alive) bits.push('ALARM CUT ✓');
           else if (this.smashT > 0.15) bits.push(`CUTTING THE ALARM ${Math.min(100, Math.round(this.smashT / SMASH_TIME * 100))}%`);
           else bits.push('CUT THE ALARM');
+        } else if (part.type === 'tank') {
+          bits.push(this.tank && this.tank.alive ? 'BLOW UP THE TANK' : 'TANK DESTROYED ✓');
         }
       }
       return bits.join('   ·   ') + quiet;

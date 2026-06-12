@@ -85,8 +85,8 @@ reserve: 4 riflemen, exist only if called.
 | Class | Mag | Reserve | Note |
 |---|---|---|---|
 | LEADER | 24 | 96 | rifle |
-| HEAVY | 50 | 150 | belt — suppress eats it fast |
-| SNIPER | 5 | 25 | every round a decision |
+| HEAVY | 50 | 150 | belt — plus 2 bazooka rockets (Space), the anti-armor answer |
+| SNIPER | 5 | 25 | every round a decision — plus 2 AT mines (Space) |
 | MEDIC | 20 | 80 | carbine |
 
 R or empty mag = reload (~1.6s, loud-ish click). Dry = click. Supply crates

@@ -15,8 +15,10 @@
 //   ringColor    — the squad color used for the selection ring + HUD card
 
 export const CLASSES = {
-  // `ability`: each class's special. input 'hold' = right-mouse held;
-  // input 'press' = Space (one-shot, with a cooldown in seconds).
+  // `ability`: each class's special, fired with Space (one-shot, with a
+  // cooldown in seconds). `charges` makes it LIMITED — the bazooka and the
+  // mines carry their own tiny ammo pool that supply drops do NOT refill;
+  // spend them on the right problem. No `charges` = unlimited (cooldown only).
   // `mag`/`reserve`/`reload`: the ammo economy — the PLAYER's resource to
   // manage (AI squadmates run theirs off-book). Supply drops refill reserves.
   leader: {
@@ -31,17 +33,19 @@ export const CLASSES = {
     damage: 11, range: 48, spread: 0.10, rifleLength: 1.15, bulky: true,
     mag: 50, reserve: 150, reload: 2.4,
     marking: 'none', ringColor: 0xffce54,
-    // Toggle: plant the gun — half fire interval, wide spread, slow feet,
-    // and a cone of suppression that pins tan heads down.
-    ability: { key: 'suppress', name: 'DIG IN', input: 'toggle' },
+    // Two rockets on his back: the squad's only answer to ARMOR (and a
+    // one-button way to delete a dug-in post). Fires at the crosshair.
+    ability: { key: 'rocket', name: 'BAZOOKA', input: 'press', cooldown: 1.5, charges: 2 },
   },
   sniper: {
     key: 'sniper', name: 'SNIPER', hp: 75, speed: 9.2, fireInterval: 1.0,
     damage: 90, range: 125, spread: 0.004, rifleLength: 1.6, bulky: false,
     mag: 5, reserve: 25, reload: 2.2,
     marking: 'none', ringColor: 0x6fd0ff,
-    // The sniper's aim (RMB) IS the scope — everyone shoulders, he magnifies.
-    ability: { key: 'scope', name: 'SCOPE', input: 'aim' },
+    scoped: true,   // his aim (RMB/Z) IS the scope — everyone shoulders, he magnifies
+    // Two anti-tank mines: plant one in the tank's lane (or a doorway) and
+    // it goes off under the first thing that rolls or walks over it.
+    ability: { key: 'mine', name: 'AT MINE', input: 'press', cooldown: 1.0, charges: 2 },
   },
   medic: {
     key: 'medic', name: 'MEDIC', hp: 90, speed: 11, fireInterval: 0.18,

@@ -233,17 +233,6 @@ export class Enemies {
     }
   }
 
-  applySuppression(point, radius, time) {
-    for (const e of this.list) {
-      const dx = e.pos.x - point.x, dz = e.pos.z - point.z;
-      if (dx * dx + dz * dz < radius * radius) {
-        if (!e.alerted) this.alert(e, point);
-        e.suppressed = Math.max(e.suppressed, time);
-        e.recheck = Math.min(e.recheck, 0.2);
-      }
-    }
-  }
-
   update(dt, squad, bullets) {
     this.hitFlash = Math.max(0, this.hitFlash - dt);
 

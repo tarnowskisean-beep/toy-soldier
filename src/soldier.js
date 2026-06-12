@@ -47,7 +47,9 @@ export class Soldier {
     this.downed = false;     // killed but revivable by a medic
     this.crashDowned = false;// knocked out by the crash — ANY squadmate can wake him
     this.fireCooldown = 0;
-    this.abilityCd = 0;      // cooldown on press-abilities (grenade/revive)
+    this.abilityCd = 0;      // cooldown on press-abilities (grenade/revive/rocket/mine)
+    // Limited specials (bazooka rockets, mines) carry their own ammo.
+    this.abilityAmmo = classDef.ability.charges ?? Infinity;
 
     // Ammo: a magazine you burn and a reserve you carry. AI squadmates manage
     // theirs off-book — the economy is the player's problem by design.
@@ -59,7 +61,6 @@ export class Soldier {
     // Where the last hit came from (drives the HUD damage-direction arrow).
     this.lastHitFrom = new THREE.Vector3();
     this.lastHitAt = -1e9;
-    this.suppressing = false;// Heavy: DIG IN toggled (Space) — bullet hose stance
     this.zoomed = false;     // Sniper: aiming = scoped
     this.aiming = false;     // RMB held: shoulder the rifle — steady, slow, zoomed
     this.crouched = false;   // C toggles: slower, tighter aim, harder to spot
@@ -97,10 +98,9 @@ export class Soldier {
 
   // ---- Called once per frame by the Squad. ----
   // ctx = { isActive, input, enemies, bullets, formationSlot }
-  // Effective stats, adjusted by the Heavy's suppress stance.
-  fireInterval() { return this.suppressing ? this.cls.fireInterval * 0.5 : this.cls.fireInterval; }
+  fireInterval() { return this.cls.fireInterval; }
   spread() {
-    let s = this.suppressing ? this.cls.spread * 2.5 : this.cls.spread;
+    let s = this.cls.spread;
     if (this.crouched) s *= 0.6;          // braced
     if (this.aiming) s *= 0.55;           // shouldered — sights on
     if (this.sprinting) s *= 2.4;         // running and gunning
@@ -301,7 +301,6 @@ export class Soldier {
       if (this.sprinting) speed *= 1.65;
       if (this.crouched) speed *= 0.55;       // sneaking
       if (this.aiming) speed *= 0.55;         // walking the sights
-      if (this.suppressing) speed *= 0.5;     // dug-in heavy moves slowly
       const step = (speed * dt) / len;
       moveBy(this.position, mx * step, mz * step, this.obstacles, 0.6, this.bounds);
     } else {
