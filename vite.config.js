@@ -9,4 +9,8 @@ export default defineConfig({
     outDir: 'dist',
     target: 'es2020',
   },
+  // Stamped into the page so a cached old build can never masquerade as new.
+  define: {
+    __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+  },
 });

@@ -824,6 +824,8 @@ function updateAbilityHUD() {
   abilityEl.classList.toggle('cooldown', ab.input === 'press' && a.abilityCd > 0);
 }
 
+try { $('buildtag').textContent = 'build ' + __BUILD__; } catch (e) { /* dev without define */ }
+
 placeCamera();
 loop();
 
