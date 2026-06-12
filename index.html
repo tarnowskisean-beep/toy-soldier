@@ -176,8 +176,13 @@
       .mission .m-tag { font-size: 12px; opacity: 0.8; }
 
       .hidden { display: none !important; }
+
+      /* Build stamp: bottom-right, tiny — 'is my browser caching an old
+         build?' answered at a glance. */
+      #buildtag { position: absolute; right: 8px; bottom: 6px; font-size: 10px;
+        letter-spacing: 1px; opacity: 0.45; color: #cfeacf; }
     </style>
-    <script type="module" crossorigin src="./assets/index-N4lLVKhw.js"></script>
+    <script type="module" crossorigin src="./assets/index-DWpldfuO.js"></script>
   </head>
   <body>
     <div id="scope"></div>
@@ -202,6 +207,7 @@
       <div id="crosshair"></div>
       <div id="dmgdir"></div>
       <div id="takedown">E&nbsp;&nbsp;SILENT TAKEDOWN</div>
+      <div id="buildtag"></div>
       <div id="peek">Z&nbsp;&nbsp;POP OUT</div>
       <div id="titlecard" class="hidden">
         <div id="cardCampaign">THE LONG WAY HOME</div>
