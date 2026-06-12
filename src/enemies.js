@@ -73,6 +73,15 @@ function tellMaterial(char, color) {
 const MAT_Q = tellMaterial('?', '#ffd23d');
 const MAT_BANG = tellMaterial('!', '#ff4030');
 
+// Takedown finishers — the rig has no ragdoll, so each kill plays a tiny
+// keyframe story on the whole figure (a TOY falls like a toy). SWAT: batted
+// off his feet, flat on his side. CRUMPLE: knees buckle, a held beat
+// kneeling, then face-down. SPIN: wrenched half-around, dropped on his back.
+// DRAG: hauled over backward, landing at the killer's boots.
+const TAKEDOWN_KINDS = ['swat', 'crumple', 'spin', 'drag'];
+const easeIn = (x) => x * x;
+const easeOut = (x) => 1 - (1 - x) * (1 - x);
+
 export class Enemies {
   constructor(scene, obstacles, coverPoints, nav, bounds) {
     this.scene = scene;
@@ -197,7 +206,18 @@ export class Enemies {
     if (i === -1) return false;
     const dx = e.pos.x - killerPos.x, dz = e.pos.z - killerPos.z;
     const len = Math.hypot(dx, dz) || 1;
-    this.dying.push({ fig: e.fig, t: 0, dx: dx / len, dz: dz / len, tip: Math.random() < 0.5 ? 1 : -1 });
+    e.fig.userData.animate(0, 0);   // settle out of mid-stride for a clean fall
+    // Yaw-first rotation order so the finisher tips him over HIS OWN axes —
+    // face-down means over his toes, not toward whatever north happens to be.
+    e.fig.rotation.order = 'YXZ';
+    this.dying.push({
+      fig: e.fig, t: 0,
+      kind: TAKEDOWN_KINDS[Math.floor(Math.random() * TAKEDOWN_KINDS.length)],
+      dx: dx / len, dz: dz / len,   // away from the killer
+      yaw0: e.fig.rotation.y,
+      tip: Math.random() < 0.5 ? 1 : -1,
+      spin: Math.random() < 0.5 ? 1 : -1,
+    });
     e.fig.remove(e.tell);
     this.list.splice(i, 1);
     this.kills++;
@@ -247,18 +267,11 @@ export class Enemies {
   update(dt, squad, bullets) {
     this.hitFlash = Math.max(0, this.hitFlash - dt);
 
-    // Knockdown animations: the swatted-toy fly-back, then they lie still.
+    // Takedown finishers in flight: each plays until the body is at rest.
     for (let i = this.dying.length - 1; i >= 0; i--) {
       const d = this.dying[i];
       d.t += dt;
-      if (d.t < 0.45) {
-        d.fig.position.x += d.dx * dt * 9;
-        d.fig.position.z += d.dz * dt * 9;
-        d.fig.position.y = Math.sin(Math.min(1, d.t / 0.45) * Math.PI) * 1.2;
-        d.fig.rotation.z = (d.t / 0.45) * (Math.PI / 2) * d.tip;
-      } else {
-        d.fig.rotation.z = (Math.PI / 2) * d.tip;
-        d.fig.position.y = 0.3;
+      if (this._finisher(d, dt)) {
         this.dying.splice(i, 1);   // corpse stays in the scene — a toy battlefield
       }
     }
@@ -559,6 +572,85 @@ export class Enemies {
     }
 
     if (dist < TOUCH_RANGE) target.takeDamage(TOUCH_DPS * dt, e.pos);
+  }
+
+  // One frame of a takedown finisher (see TAKEDOWN_KINDS). The figure pivots
+  // at its feet, so rotation.x = ±PI/2 sweeps the body down like a felled
+  // tree: + is face-down ahead of him, - is flat on his back behind him.
+  // Returns true once the final pose is set.
+  _finisher(d, dt) {
+    const f = d.fig;
+    const rifle = f.userData.rifle;
+    switch (d.kind) {
+      case 'swat': {
+        // Batted off his feet — a short fly-back, then flat on his side.
+        if (d.t >= 0.45) {
+          f.rotation.z = (Math.PI / 2) * d.tip;
+          f.position.y = 0.3;
+          return true;
+        }
+        f.position.x += d.dx * dt * 9;
+        f.position.z += d.dz * dt * 9;
+        f.position.y = Math.sin((d.t / 0.45) * Math.PI) * 1.2;
+        f.rotation.z = (d.t / 0.45) * (Math.PI / 2) * d.tip;
+        return false;
+      }
+      case 'crumple': {
+        // Knees buckle, a held beat kneeling, then face-down like a
+        // dropped doll.
+        if (d.t < 0.28) {
+          const k = easeOut(d.t / 0.28);
+          f.position.y = -0.5 * k;
+          f.rotation.x = 0.18 * k;
+          rifle.rotation.x = 0.12 + 0.95 * k;   // the muzzle sags with his grip
+        } else if (d.t < 0.6) {
+          f.position.y = -0.5;                  // the beat on his knees
+          f.rotation.x = 0.18;
+        } else if (d.t < 1.0) {
+          const k = easeIn((d.t - 0.6) / 0.4);
+          f.rotation.x = 0.18 + (Math.PI / 2 - 0.18) * k;
+          f.position.y = -0.5 + 0.64 * k;       // the pivot rides up as he lays out
+        } else {
+          f.rotation.x = Math.PI / 2;
+          f.position.y = 0.14;
+          return true;
+        }
+        return false;
+      }
+      case 'spin': {
+        // Wrenched half-around — then straight down on his back.
+        if (d.t < 0.22) {
+          f.rotation.y = d.yaw0 + 2.6 * d.spin * easeOut(d.t / 0.22);
+        } else if (d.t < 0.62) {
+          const k = easeIn((d.t - 0.22) / 0.4);
+          f.rotation.y = d.yaw0 + (2.6 + 0.5 * k) * d.spin;
+          f.rotation.x = -(Math.PI / 2) * k;
+          f.position.y = Math.sin(k * Math.PI) * 0.2 + 0.15 * k;
+          rifle.rotation.x = 0.12 + 1.0 * k;
+        } else {
+          f.rotation.x = -Math.PI / 2;
+          f.position.y = 0.15;
+          return true;
+        }
+        return false;
+      }
+      case 'drag': {
+        // Hauled over backward — he lands looking up from the killer's boots.
+        if (d.t >= 0.5) {
+          f.rotation.x = -Math.PI / 2;
+          f.position.y = 0.15;
+          return true;
+        }
+        const k = easeIn(d.t / 0.5);
+        f.rotation.x = -(Math.PI / 2) * k;
+        f.position.x -= d.dx * dt * 2.4;        // slides INTO the grab
+        f.position.z -= d.dz * dt * 2.4;
+        f.position.y = Math.sin((d.t / 0.5) * Math.PI) * 0.18 + 0.15 * k;
+        rifle.rotation.x = 0.12 + 1.1 * k;
+        return false;
+      }
+    }
+    return true;
   }
 
   _nearestSoldier(squad, from) {

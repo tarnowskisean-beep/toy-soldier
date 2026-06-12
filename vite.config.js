@@ -5,6 +5,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: './',
+  // Honor an assigned PORT so a worktree's dev server can run beside the
+  // main checkout's (both default to 5173 otherwise).
+  server: { port: Number(process.env.PORT) || 5173 },
   build: {
     outDir: 'dist',
     target: 'es2020',
