@@ -36,6 +36,8 @@ export function runSmoke() {
     check('18 tan spawned', g.enemies.list.length === 18);
     check('3 squadmates crash-downed', g.squad.members.filter((m) => m.crashDowned).length === 3);
     check('regroup objective shown', $('objective').textContent.includes('FIND YOUR SQUAD'));
+    check('checkpoint zero saved', !!g.mission.checkpoint);
+    check('frag pouch stocked', g.squad.active.nades === 2);
 
     // Movement + collision: walk the leader into the room.
     const a = g.squad.active;
@@ -55,9 +57,12 @@ export function runSmoke() {
     check('ammo economy ticking', a.mag < a.cls.mag || a.reloading > 0);
 
     // The fight is verified — stand the war down before testing the mission
-    // verbs, so a lucky tan bullet can't fail an unrelated check.
+    // verbs, so a lucky tan bullet can't fail an unrelated check. Clear the
+    // rounds still IN FLIGHT too: a stray hit during the rescue phase would
+    // be honestly snapshotted by the checkpoint and flake the restore check.
     for (const e of g.enemies.list) e.hp = 0;
     g.step(5);
+    g.bullets.clear();
     check('enemies clearable', g.enemies.list.length === 0);
 
     // The TANK: plastic armor that only a BLAST opens — two rocket-sized
@@ -70,13 +75,21 @@ export function runSmoke() {
     g.step(5);
     check('tank destroyed by explosives', !tank.alive);
 
-    // Rescue mechanic: stand beside each downed buddy until he's up.
+    // LIVE WORLD RULES: the radio dies in ANY act — even before its
+    // objective opens (regroup is still running here).
+    g.world.radio.hp = 0;
+    g.step(5);
+    check('radio destroyable in any act', !g.world.radio.alive);
+
+    // Rescue mechanic: HOLD E beside each downed buddy until he's up.
+    g.input.keys['KeyE'] = true;
     for (const m of g.squad.members) {
       if (!m.crashDowned) continue;
       a.position.set(m.position.x + 1.2, 0, m.position.z + 1.2);
-      g.step(140);
+      g.step(160);
     }
-    check('crash rescues (regroup stage)', g.squad.members.every((m) => !m.crashDowned));
+    g.input.keys['KeyE'] = false;
+    check('crash rescues (hold E)', g.squad.members.every((m) => !m.crashDowned));
     g.step(10);
 
     // The class specials, through the real Space handler: the Heavy's bazooka
@@ -93,6 +106,23 @@ export function runSmoke() {
     check('mine planted (charge spent)',
       g.squad.members[2].abilityAmmo === 1 && g.grenades.mines.length === 1);
     g.squad.setActive(0);
+
+    // CHECKPOINT: the stage advance saved one; wound the leader, rewind,
+    // and the world snaps back — same stage, the SNAPSHOTTED health (not an
+    // assumed max — the checkpoint records what was true), no reload. The
+    // rewind also re-pockets the just-spent rocket and mine and sweeps the
+    // mine off the floor — the snapshot predates them.
+    const cpStage = g.mission.stageIdx;
+    const cpHealth = g.mission.checkpoint.squad[g.mission.checkpoint.activeIndex].health;
+    a.health = 5;
+    const restored = g.mission.restoreCheckpoint(g.squad, g.enemies, g.bullets, g.grenades);
+    check('checkpoint restores in place',
+      restored && g.mission.stageIdx === cpStage &&
+      g.squad.active.health === cpHealth && g.squad.active.health > 5);
+    check('rewind re-pockets specials',
+      g.squad.members[1].abilityAmmo === 2 && g.grenades.mines.length === 0);
+    g.step(5);
+
     for (const s of g.world.supplies) { s.taken = true; s.crate.visible = false; s.ring.visible = false; }
     g.world.radio.hp = 0;
     g.step(10);

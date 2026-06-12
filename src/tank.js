@@ -260,6 +260,48 @@ export class Tank {
     }
   }
 
+  // --- Checkpoint plumbing: freeze/rewind the armor like any other prop. ---
+  snapshot() {
+    return {
+      alive: this.alive, hp: this.hp,
+      x: this.pos.x, z: this.pos.z,
+      heading: this.heading, turretYaw: this.turretYaw,
+      toB: this.patrol ? this.patrol.toB : true,
+    };
+  }
+
+  restore(s) {
+    for (const sh of this.shells) this.scene.remove(sh.mesh);
+    this.shells.length = 0;
+    this.fireCd = FIRE_INTERVAL * 0.5;
+    this.lostT = 0;
+    this.hitFlash = 0;
+    // A snapshot can't be deader than the present (armor never heals), so the
+    // only resurrection is wreck → alive: un-char the plastic, re-seat the
+    // popped turret, stop the smoke.
+    if (s.alive && !this.alive) {
+      for (const p of this.smoke) this.scene.remove(p.sp);
+      this.smoke.length = 0;
+      this._turretFly = null;
+      this._tanMat.color.setHex(0xcdb072);
+      this._tanMat.emissive.setHex(0x000000);
+      this._tanMat.clearcoat = 0.5;
+      this._darkMat.color.setHex(0x8f7a4e);
+      this.turret.position.set(0, 2.4, -0.4);
+      this.turret.rotation.set(0, 0, 0);
+    }
+    this.alive = s.alive;
+    this.hp = s.hp;
+    this.pos.set(s.x, 0, s.z);
+    this.heading = s.heading;
+    this.turretYaw = s.turretYaw;
+    if (this.patrol) this.patrol.toB = s.toB;
+    this.group.position.copy(this.pos);
+    this.group.rotation.y = this.heading;
+    this.turret.rotation.y = angTo(this.heading, this.turretYaw);
+    this._syncBox();
+  }
+
   // A blast within `radius` of the ARMOR (distance to the hull box, not the
   // center — direct hits count full). Returns true if this one killed it.
   takeBlast(pos, radius, damage) {

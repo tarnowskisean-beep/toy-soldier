@@ -16,6 +16,7 @@ class Sfx {
       this.master.gain.value = 0.32;
       this.master.connect(this.ctx.destination);
       this._startAmbient();
+      this._initMusic();
     }
     if (this.ctx.state === 'suspended') this.ctx.resume();
   }
@@ -87,6 +88,22 @@ class Sfx {
     this._env(g, t, 0.25, 0.1);
     o.connect(g).connect(this.master);
     o.start(t); o.stop(t + 0.12);
+  }
+
+  // The bright plastic CRACK of a headshot — meaner than the body thock.
+  crit() {
+    if (!this.ctx) return;
+    [1250, 1650].forEach((f, i) => {
+      const t = this.ctx.currentTime + i * 0.035;
+      const o = this.ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f * 0.7, t + 0.05);
+      const g = this.ctx.createGain();
+      this._env(g, t, 0.16, 0.06);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.08);
+    });
   }
 
   // A body easing to the floor: one soft low thud. The whole point is how
@@ -242,6 +259,76 @@ class Sfx {
     });
   }
 
+  // A sentry's suspicion crossing the line: one soft rising blip. Quieter
+  // with distance — the cue is for threats near enough to matter.
+  suspicion(dist = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (this._lastSus && t - this._lastSus < 0.3) return;
+    this._lastSus = t;
+    const o = this.ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.exponentialRampToValueAtTime(760, t + 0.09);
+    const g = this.ctx.createGain();
+    this._env(g, t, Math.max(0.05, 0.2 * (1 - dist / 55)), 0.13);
+    o.connect(g).connect(this.master);
+    o.start(t); o.stop(t + 0.16);
+  }
+
+  // MADE: the sharp two-note "!" sting. Globally throttled — a whole post
+  // alerting at once is one sting, not a chord of them.
+  spotted() {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (this._lastSpot && now - this._lastSpot < 1.4) return;
+    this._lastSpot = now;
+    [700, 1040].forEach((f, i) => {
+      const t = now + i * 0.07;
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      const g = this.ctx.createGain();
+      this._env(g, t, 0.17, 0.12);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 0.16);
+    });
+  }
+
+  // The runner shouting into the handset: beeps that CLIMB as the call gets
+  // through. You hear the alarm being raised, not just its result.
+  callBeep(progress, dist = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.value = 470 + progress * 470;
+    const g = this.ctx.createGain();
+    this._env(g, t, Math.max(0.1, 0.3 * (1 - dist / 90)), 0.14);
+    o.connect(g).connect(this.master);
+    o.start(t); o.stop(t + 0.17);
+  }
+
+  // A round snapping PAST your head — the near-miss crack that makes enemy
+  // fire feel dangerous before it ever lands.
+  whiz() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (this._lastWhiz && t - this._lastWhiz < 0.08) return;
+    this._lastWhiz = t;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer(0.07);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(3800, t);
+    bp.frequency.exponentialRampToValueAtTime(1300, t + 0.07);
+    const g = this.ctx.createGain();
+    this._env(g, t, 0.2, 0.07);
+    noise.connect(bp).connect(g).connect(this.master);
+    noise.start(t);
+  }
+
   // The tan field radio screaming for help: a two-tone siren burst.
   alarm() {
     if (!this.ctx) return;
@@ -271,6 +358,63 @@ class Sfx {
       o.connect(g).connect(this.master);
       o.start(t); o.stop(t + 0.8);
     });
+  }
+
+  // --- MUSIC: two synth layers that follow the fight. ---
+  // 'calm' = room tone only. 'tension' = a low detuned drone (someone is
+  // hunting). 'combat' = the drone plus a chugging pulse. The layers run
+  // forever at gain 0 and crossfade — the quiet-loud-quiet pacing, scored.
+  _initMusic() {
+    const c = this.ctx;
+    this._musicState = 'calm';
+    // TENSION: two saws a hair apart, low-passed to a felt-not-heard drone.
+    this.tGain = c.createGain();
+    this.tGain.gain.value = 0;
+    const lp = c.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 240;
+    for (const f of [55, 55.7]) {
+      const o = c.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.connect(lp);
+      o.start();
+    }
+    lp.connect(this.tGain).connect(this.master);
+    // COMBAT: a low square chopped by a square LFO — a drum machine's worth
+    // of urgency from two oscillators.
+    this.cGain = c.createGain();
+    this.cGain.gain.value = 0;
+    const o = c.createOscillator();
+    o.type = 'square';
+    o.frequency.value = 82.4;                  // E2
+    const chop = c.createGain();
+    chop.gain.value = 0.5;
+    const lfo = c.createOscillator();
+    lfo.type = 'square';
+    lfo.frequency.value = 2.2;
+    const depth = c.createGain();
+    depth.gain.value = 0.5;
+    lfo.connect(depth).connect(chop.gain);     // gate swings 0 → 1
+    const clp = c.createBiquadFilter();
+    clp.type = 'lowpass';
+    clp.frequency.value = 420;
+    o.connect(chop).connect(clp).connect(this.cGain).connect(this.master);
+    o.start();
+    lfo.start();
+  }
+
+  setMusic(state) {
+    if (!this.ctx || state === this._musicState) return;
+    this._musicState = state;
+    const t = this.ctx.currentTime;
+    const ramp = (g, v, dur) => {
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.linearRampToValueAtTime(v, t + dur);
+    };
+    ramp(this.tGain, state === 'calm' ? 0 : 0.085, state === 'calm' ? 2.5 : 1.2);
+    ramp(this.cGain, state === 'combat' ? 0.1 : 0, state === 'combat' ? 0.5 : 1.8);
   }
 
   _startAmbient() {

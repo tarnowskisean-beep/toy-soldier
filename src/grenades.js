@@ -228,6 +228,21 @@ export class Grenades {
     }
   }
 
+  // Checkpoint rewind: live ordnance — grenades, rockets, mines, smoke,
+  // flashes — vanishes without detonating.
+  clear() {
+    for (const n of this.nades) this.scene.remove(n.mesh);
+    for (const r of this.rockets) this.scene.remove(r.mesh);
+    for (const m of this.mines) this.scene.remove(m.group);
+    for (const p of this.puffs) this.scene.remove(p.sp);
+    for (const f of this.flashes) this.scene.remove(f.mesh);
+    this.nades.length = 0;
+    this.rockets.length = 0;
+    this.mines.length = 0;
+    this.puffs.length = 0;
+    this.flashes.length = 0;
+  }
+
   // The TANK's shell burst: same flash and noise, but the blast hurts the
   // SQUAD (the tan don't shell their own).
   shellBoom(pos, squad, enemies) {
