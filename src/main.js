@@ -205,6 +205,9 @@ function startPlaying() {
   mission = new MissionRunner(currentDef, scene, world);
   mission.onToast = showToast;
   mission.begin(enemies, squad);
+  // The blast system needs to know the armor exists — explosions are the
+  // ONLY thing that hurt it.
+  grenades.tank = mission.tank;
   window.game.mission = mission;
   window.game.world = world;
   objectiveEl.classList.remove('hidden');
@@ -573,9 +576,9 @@ function tick(dt) {
     exitGlow.material.opacity = 0.25 + 0.15 * Math.sin(performance.now() * 0.004);
     vignette.classList.toggle('show', squad.active.alive && squad.active.health < 35);
 
-    // --- Mission objective ---
+    // --- Mission objective (also drives the tank, if one is fielded) ---
     const stageWas = mission.stageIdx;
-    mission.update(dt, squad, enemies, bullets);
+    mission.update(dt, squad, enemies, bullets, grenades);
     // Act 2 opens = the squad is up: teach the two orders squad-stealth runs on.
     if (mission.stageIdx !== stageWas && mission.stage() && mission.stage().type === 'multi') {
       tip('squadstealth', 'Squad up: X toggles HOLD FIRE, and they sneak when you crouch.');
@@ -934,29 +937,38 @@ function handleAbility(aim) {
   if (!a.alive) return;
   // RMB = shoulder the rifle, every class. The sniper's shoulder is a scope.
   a.aiming = input.aiming && !mapMode;
-  const ab = a.cls.ability;
-  if (ab.key === 'scope') a.zoomed = a.aiming;
+  if (a.cls.scoped) a.zoomed = a.aiming;
 
-  if (ab.key === 'suppress') {
-    // DIG IN is a stance, not a button-hold: Space plants/unplants the gun.
-    if (input.consume('Space')) a.suppressing = !a.suppressing;
-    if (a.suppressing) enemies.applySuppression(aim.point, 12, 0.7);
-  } else {
-    a.suppressing = false;
-    if (input.consume('Space') && a.abilityCd <= 0) {
-      if (ab.key === 'grenade') {
-        // Frags come out of a POUCH, not a cooldown — supply drops refill it.
-        if (a.nades > 0) {
-          grenades.throwAt(a.muzzleWorldPosition(), aim.point);
-          a.nades--;
-          a.abilityCd = ab.cooldown;
-        } else {
-          sfx.dry();
-          tip('nonades', 'Frag pouch is empty — SUPPLY CRATES carry more.');
-        }
-      } else if (ab.key === 'revive') {
-        if (squad.reviveNear(a)) a.abilityCd = ab.cooldown;
+  const ab = a.cls.ability;
+  if (input.consume('Space') && a.abilityCd <= 0) {
+    if (ab.key === 'grenade') {
+      // Frags come out of a POUCH, not a cooldown — supply drops refill it.
+      if (a.nades > 0) {
+        grenades.throwAt(a.muzzleWorldPosition(), aim.point);
+        a.nades--;
+        a.abilityCd = ab.cooldown;
+      } else {
+        sfx.dry();
+        tip('nonades', 'Frag pouch is empty — SUPPLY CRATES carry more.');
       }
+    } else if (ab.key === 'revive') {
+      if (squad.reviveNear(a)) a.abilityCd = ab.cooldown;
+    } else if (ab.key === 'rocket') {
+      // The bazooka fires where the BULLETS converge — straight at the
+      // crosshair. Two rockets per mission; crates do NOT refill them.
+      if (a.abilityAmmo <= 0) { sfx.dry(); return; }
+      grenades.fireRocket(a.muzzleWorldPosition(), aim.firePoint);
+      a.abilityAmmo--;
+      a.abilityCd = ab.cooldown;
+      barks.say(a.figure, 'Rocket away!', '#ffce54');
+    } else if (ab.key === 'mine') {
+      // Planted a step ahead of his boots — lay it in the tank's lane.
+      if (a.abilityAmmo <= 0) { sfx.dry(); return; }
+      const f = a.forwardVector();
+      grenades.placeMine(a.position.x + f.x * 1.3, a.position.z + f.z * 1.3);
+      a.abilityAmmo--;
+      a.abilityCd = ab.cooldown;
+      barks.say(a.figure, 'Mine planted.', '#6fd0ff');
     }
   }
 }
@@ -1011,13 +1023,14 @@ function updateDamageHUD() {
 
 function updateAbilityHUD() {
   const a = squad.active, ab = a.cls.ability;
-  let label = (ab.input === 'aim' ? 'Z' : 'SPACE') + '  ' + ab.name;
+  // Counted specials show what's left right in the prompt: the frag pouch
+  // (crates refill it) and the rocket/mine charges (they don't).
+  let label = 'SPACE  ' + ab.name;
   if (ab.key === 'grenade') label += `  ×${a.nades}`;
+  else if (a.abilityAmmo !== Infinity) label += `  ×${a.abilityAmmo}`;
   abilityEl.textContent = label;
-  const engaged = (ab.key === 'suppress' && a.suppressing) || (ab.key === 'scope' && a.zoomed);
-  abilityEl.classList.toggle('active', engaged);
-  abilityEl.classList.toggle('cooldown',
-    ab.input === 'press' && (a.abilityCd > 0 || (ab.key === 'grenade' && a.nades <= 0)));
+  const empty = ab.key === 'grenade' ? a.nades <= 0 : a.abilityAmmo <= 0;
+  abilityEl.classList.toggle('cooldown', a.abilityCd > 0 || empty);
 }
 
 try { $('buildtag').textContent = 'build ' + __BUILD__; } catch (e) { /* dev without define */ }

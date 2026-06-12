@@ -247,6 +247,47 @@ class Sfx {
     thump.start(t); thump.stop(t + 0.45);
   }
 
+  // The tank's gun: a deeper, shorter slam than a rifle — you KNOW it's armor.
+  cannon(dist = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const vol = Math.max(0.12, 1 - dist / 90);
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer(0.25);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 900;
+    const ng = this.ctx.createGain();
+    this._env(ng, t, 0.9 * vol, 0.22);
+    noise.connect(lp).connect(ng).connect(this.master);
+    noise.start(t);
+    const thump = this.ctx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(95, t);
+    thump.frequency.exponentialRampToValueAtTime(32, t + 0.18);
+    const tg = this.ctx.createGain();
+    this._env(tg, t, 0.8 * vol, 0.2);
+    thump.connect(tg).connect(this.master);
+    thump.start(t); thump.stop(t + 0.24);
+  }
+
+  // The bazooka leaving the tube: a rising whoosh of filtered noise.
+  rocket() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer(0.4);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(320, t);
+    bp.frequency.exponentialRampToValueAtTime(1500, t + 0.3);
+    bp.Q.value = 1.6;
+    const g = this.ctx.createGain();
+    this._env(g, t, 0.5, 0.35);
+    noise.connect(bp).connect(g).connect(this.master);
+    noise.start(t);
+  }
+
   // A lightbulb dying: three tiny glass tinks.
   glass() {
     if (!this.ctx) return;

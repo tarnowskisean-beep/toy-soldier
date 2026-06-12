@@ -4,7 +4,8 @@
 //   regroup — your crash-scattered squadmates lie downed; hold E beside one
 //             to get him on his feet (the interaction lives in main.js — the
 //             stage just watches for the squad to be whole)
-//   multi   — several parts at once, any order (collect supplies / cut the radio)
+//   multi   — several parts at once, any order (collect supplies / cut the
+//             radio / blow up the tank)
 //   escape  — reach the exit zone and hold it, uncontested
 //
 // THE WORLD IS LIVE IN EVERY ACT: crates can be grabbed and the radio can die
@@ -17,6 +18,7 @@
 
 import { sfx } from './audio.js';
 import { barks } from './barks.js';
+import { Tank } from './tank.js';
 
 const PICKUP_RANGE = 2.4;
 const SMASH_RANGE = 2.2;
@@ -57,6 +59,11 @@ export class MissionRunner {
     enemies.radio = this.world.radio || null;
     enemies.lamps = this.world.lamps || [];
     enemies.reserveLayout = this.def.reserve || null;
+    // The mission's armor, if it fields any. Its hull joins the world's
+    // obstacle list — from here on it's a (driving) piece of furniture.
+    this.tank = this.def.tank
+      ? new Tank(this.scene, this.world.obstacles, this.def.tank)
+      : null;
 
     // The squad ended up all over the house: thrown by the crash, dragged
     // to a pen, or gone to ground. Pose tells each man's story at a glance.
@@ -112,11 +119,14 @@ export class MissionRunner {
     }
   }
 
-  update(dt, squad, enemies, bullets) {
+  update(dt, squad, enemies, bullets, grenades) {
     if (this.state !== 'active') return;
     this.t += dt;
     this.playTime += dt;
     this._animateProps();
+    // The tank fights (and patrols, and smolders) through EVERY stage —
+    // it's a combatant that happens to also be an objective.
+    if (this.tank) this.tank.update(dt, squad, enemies, grenades);
 
     // The world is LIVE every act: walk over a crate and it's yours, put a
     // mag into the radio and it dies — whatever the current objective says.
@@ -133,6 +143,7 @@ export class MissionRunner {
       for (const part of st.parts) {
         if (part.type === 'collect' && !suppliesDone) done = false;
         if (part.type === 'destroy' && !radioDone) done = false;
+        if (part.type === 'tank' && this.tank && this.tank.alive) done = false;
       }
       if (done) this._advance();
     } else if (st.type === 'escape') {
@@ -254,8 +265,10 @@ export class MissionRunner {
         alive: m.alive, downed: m.downed, crashDowned: m.crashDowned,
         pose: m._pose, zone: m._zone, waved: m._waved,
         health: m.health, mag: m.mag, reserve: m.reserve, nades: m.nades,
+        ammo: m.abilityAmmo,
       })),
       enemies: enemies.snapshot(),
+      tank: this.tank ? this.tank.snapshot() : null,
       supplies: this.world.supplies ? this.world.supplies.map((s) => s.taken) : [],
       radio: this.world.radio
         ? { alive: this.world.radio.alive, hp: this.world.radio.hp }
@@ -291,13 +304,14 @@ export class MissionRunner {
       m.mag = s.mag;
       m.reserve = s.reserve;
       m.nades = s.nades;
+      m.abilityAmmo = s.ammo;
       m.reloading = 0;
       m.fireCooldown = 0;
       m.abilityCd = 0;
       m.order = 'follow';
       m.target = null;
       m._coverSpot = null;
-      m.aiming = m.zoomed = m.suppressing = m.crouched = false;
+      m.aiming = m.zoomed = m.crouched = false;
       m.inCover = m.peeking = m.sprinting = false;
       m.coverBox = null;
       m.figure.position.copy(m.position);
@@ -313,6 +327,7 @@ export class MissionRunner {
     squad.setActive(c.activeIndex);
 
     enemies.restore(c.enemies);
+    if (this.tank && c.tank) this.tank.restore(c.tank);
 
     if (this.world.supplies) {
       this.world.supplies.forEach((s, i) => {
@@ -397,6 +412,9 @@ export class MissionRunner {
       });
       const r = this.world.radio;
       if (r && r.alive) cands.push({ key: 'radio', x: r.pos.x, z: r.pos.z });
+      if (this.tank && this.tank.alive) {
+        cands.push({ key: 'tank', x: this.tank.pos.x, z: this.tank.pos.z });
+      }
       if (!cands.length) return null;
       const dist = (c) => Math.hypot(c.x - a.position.x, c.z - a.position.z);
       let best = cands[0];
@@ -436,6 +454,8 @@ export class MissionRunner {
           if (!r.alive) bits.push('ALARM CUT ✓');
           else if (this.smashT > 0.15) bits.push(`CUTTING THE ALARM ${Math.min(100, Math.round(this.smashT / SMASH_TIME * 100))}%`);
           else bits.push('CUT THE ALARM');
+        } else if (part.type === 'tank') {
+          bits.push(this.tank && this.tank.alive ? 'BLOW UP THE TANK' : 'TANK DESTROYED ✓');
         }
       }
       return bits.join('   ·   ') + threat + quiet;

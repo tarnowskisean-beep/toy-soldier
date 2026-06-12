@@ -82,7 +82,6 @@ export class Squad {
     const prev = this.active;
     prev.aiming = false;
     prev.zoomed = false;
-    prev.suppressing = false;
     this.activeIndex = i;
     this.ring.material.color.setHex(this.active.cls.ringColor);
   }

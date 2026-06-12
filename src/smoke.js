@@ -65,6 +65,16 @@ export function runSmoke() {
     g.bullets.clear();
     check('enemies clearable', g.enemies.list.length === 0);
 
+    // The TANK: plastic armor that only a BLAST opens — two rocket-sized
+    // hits kill it. (Killed now so it can't shell the rescue walks below.)
+    const tank = g.mission.tank;
+    check('tank fielded and alive', !!tank && tank.alive);
+    tank.takeBlast(tank.pos, 7, 220);
+    check('tank takes blast damage', tank.hp < 400);
+    tank.takeBlast(tank.pos, 7, 220);
+    g.step(5);
+    check('tank destroyed by explosives', !tank.alive);
+
     // LIVE WORLD RULES: the radio dies in ANY act — even before its
     // objective opens (regroup is still running here).
     g.world.radio.hp = 0;
@@ -82,9 +92,26 @@ export function runSmoke() {
     check('crash rescues (hold E)', g.squad.members.every((m) => !m.crashDowned));
     g.step(10);
 
+    // The class specials, through the real Space handler: the Heavy's bazooka
+    // and the Sniper's mine each burn one of their two charges.
+    g.squad.setActive(1);
+    g.input.pressed['Space'] = true;
+    g.step(1);
+    // (Ammo is the check — the rocket itself may already have detonated if
+    // the Heavy happened to stop near a wall.)
+    check('bazooka fires (charge spent)', g.squad.members[1].abilityAmmo === 1);
+    g.squad.setActive(2);
+    g.input.pressed['Space'] = true;
+    g.step(1);
+    check('mine planted (charge spent)',
+      g.squad.members[2].abilityAmmo === 1 && g.grenades.mines.length === 1);
+    g.squad.setActive(0);
+
     // CHECKPOINT: the stage advance saved one; wound the leader, rewind,
     // and the world snaps back — same stage, the SNAPSHOTTED health (not an
-    // assumed max — the checkpoint records what was true), no reload.
+    // assumed max — the checkpoint records what was true), no reload. The
+    // rewind also re-pockets the just-spent rocket and mine and sweeps the
+    // mine off the floor — the snapshot predates them.
     const cpStage = g.mission.stageIdx;
     const cpHealth = g.mission.checkpoint.squad[g.mission.checkpoint.activeIndex].health;
     a.health = 5;
@@ -92,6 +119,8 @@ export function runSmoke() {
     check('checkpoint restores in place',
       restored && g.mission.stageIdx === cpStage &&
       g.squad.active.health === cpHealth && g.squad.active.health > 5);
+    check('rewind re-pockets specials',
+      g.squad.members[1].abilityAmmo === 2 && g.grenades.mines.length === 0);
     g.step(5);
 
     for (const s of g.world.supplies) { s.taken = true; s.crate.visible = false; s.ring.visible = false; }
