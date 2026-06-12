@@ -292,10 +292,27 @@ function getAim() {
     _firePoint.copy(_aimPoint);
     return { enemy, point: _aimPoint, firePoint: _firePoint };
   }
-  // No target under the crosshair: ORDERS want the ground point you're
-  // looking at; BULLETS want to fly level along the sightline (aiming at
-  // the dirt made every shot dive into the cover in front of you).
-  ray.at(50, _firePoint);
+  // No target under the crosshair: BULLETS converge on whatever the view
+  // ray actually HITS — wall, crate, floor — at its true distance. Firing
+  // at a fixed far point made shots from the offset muzzle land a body-
+  // width beside the crosshair at close range (the camera and the rifle
+  // are not in the same place; convergence is what lines them up).
+  const REACH = 120;
+  let hitT = REACH;
+  const ex2 = ray.origin.x + ray.direction.x * REACH;
+  const ey2 = ray.origin.y + ray.direction.y * REACH;
+  const ez2 = ray.origin.z + ray.direction.z * REACH;
+  for (const b of obstacles) {
+    const t = segBoxEntryT(ray.origin.x, ray.origin.y, ray.origin.z, ex2, ey2, ez2, b);
+    if (t < Infinity) hitT = Math.min(hitT, t * REACH);
+  }
+  if (ray.direction.y < 0) {
+    const tg = -ray.origin.y / ray.direction.y;
+    if (tg > 0) hitT = Math.min(hitT, tg);
+  }
+  // Never converge BEHIND the muzzle (the ray starts at the camera, which
+  // sits behind the soldier).
+  ray.at(Math.max(camDist + 2, hitT), _firePoint);
   if (ray.intersectPlane(GROUND, _aimPoint)) {
     return { enemy: null, point: _aimPoint, firePoint: _firePoint };
   }
