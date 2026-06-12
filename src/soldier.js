@@ -146,9 +146,10 @@ export class Soldier {
     if (rifle) {
       const k = Math.min(1, dt * 10);
       const homeY = this.figure.userData.rifleHomeY;
-      rifle.rotation.y += ((this.aiming ? 0.02 : -0.14) - rifle.rotation.y) * k;
+      // Low-ready carry (angled, muzzle dipped) ↔ shouldered on the sights.
+      rifle.rotation.y += ((this.aiming ? 0.02 : -0.25) - rifle.rotation.y) * k;
       rifle.position.y += ((this.aiming ? homeY + 0.16 : homeY) - rifle.position.y) * k;
-      rifle.rotation.x += ((this.aiming ? -0.06 : 0) - rifle.rotation.x) * k;
+      rifle.rotation.x += ((this.aiming ? -0.06 : 0.12) - rifle.rotation.x) * k;
     }
 
     // Drive the walk cycle from actual ground covered.

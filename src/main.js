@@ -474,8 +474,9 @@ const cameraBlockers = obstacles.filter((b) =>
   b.max.y >= 3.5 && (b.max.x - b.min.x) * (b.max.z - b.min.z) >= 5);
 let camDist = CAM_DISTANCE;
 let aimT = 0;            // 0 = chase camera, 1 = over-the-shoulder aim camera
-let shoulderSign = 1;    // which shoulder the aim camera rides
-let shoulderSmooth = 1;  // eased version, so swaps swing instead of snapping
+let shoulderSign = 1;       // which shoulder the aim camera rides
+let shoulderSmooth = 1;     // eased version, so swaps swing instead of snapping
+let peekShoulderLock = false; // frozen choice while popped/leaning from cover
 
 function placeCamera(dt = 0) {
   // The reveal fog is for eyes at soldier height — the tactical map reads
@@ -521,14 +522,22 @@ function placeCamera(dt = 0) {
   // the camera's side used to bury the view in the box.
   const leanBias = (a.peeking && a.coverBox && a.coverBox.max.y > 1.45) ? 1.3 : 1;
   const sideMag = 1.65 * aimT * leanBias;
-  if (a.inCover && a.aiming && a.canLean !== 0 && a.coverBox && a.coverBox.max.y > 1.45) {
-    // Leaning: the shoulder is DECIDED by the lean — camera rides the open
-    // side, away from the wall. (Clearance casts can't see a wall that sits
-    // BESIDE the boom, which is why left leans used to bury the view.)
-    const n = a.coverSide === 'px' ? [1, 0] : a.coverSide === 'nx' ? [-1, 0]
-            : a.coverSide === 'pz' ? [0, 1] : [0, -1];
-    const lx = -n[1] * a.canLean, lz = n[0] * a.canLean;
-    shoulderSign = (lx * rx + lz * rz) >= 0 ? 1 : -1;
+  if (a.peeking) {
+    // Popped out or leaning: pick the shoulder ONCE when the peek starts and
+    // FREEZE it — re-evaluating every frame made the view flip sides as you
+    // turned to track targets.
+    if (!peekShoulderLock) {
+      peekShoulderLock = true;
+      if (a.inCover && a.canLean !== 0 && a.coverBox && a.coverBox.max.y > 1.45) {
+        // Leaning: ride the open side, away from the wall.
+        const n = a.coverSide === 'px' ? [1, 0] : a.coverSide === 'nx' ? [-1, 0]
+                : a.coverSide === 'pz' ? [0, 1] : [0, -1];
+        const lx = -n[1] * a.canLean, lz = n[0] * a.canLean;
+        shoulderSign = (lx * rx + lz * rz) >= 0 ? 1 : -1;
+      }
+      // Low-cover pop: keep whatever shoulder we already had — stability
+      // beats optimality for the half-second you're up.
+    }
   } else if (aimT > 0.25) {
     const clearFor = (sign) => {
       const cx = a.position.x + rx * sideMag * sign;
@@ -544,6 +553,7 @@ function placeCamera(dt = 0) {
     // Hysteresis: only swap when the other shoulder is clearly better.
     if (clearFor(-shoulderSign) > clearFor(shoulderSign) * 1.3 + 0.4) shoulderSign = -shoulderSign;
   }
+  if (!a.peeking) peekShoulderLock = false;   // re-decide on the NEXT pop
   shoulderSmooth += (shoulderSign - shoulderSmooth) * Math.min(1, dt * 8);
   const tx = a.position.x + rx * sideMag * shoulderSmooth;
   const tz = a.position.z + rz * sideMag * shoulderSmooth;

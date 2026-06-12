@@ -95,10 +95,14 @@ export function createFigure(color, opts = {}) {
     add(upper, new THREE.CylinderGeometry(0.195, 0.205, 0.06, 14), 0, 1.965, 0.03, 0, 0, 0, bandMat);
   }
 
-  // ---- ARMS + RIFLE: one assembly, stock at the shoulder. ----
+  // ---- ARMS + RIFLE: one assembly CARRIED AT THE RIGHT SHOULDER — stock
+  // in the pocket, angled across and muzzle-down at low-ready; aiming
+  // raises it level beside the cheek. A soldier carries his weapon on a
+  // shoulder, not bolted to his sternum. ----
   const armsRifle = new THREE.Group();
-  armsRifle.position.set(0.16 * bw, 1.6, 0.14);
-  armsRifle.rotation.y = -0.14;                     // across the chest at rest
+  armsRifle.position.set(0.26 * bw, 1.6, 0.12);
+  armsRifle.rotation.y = -0.25;                     // low-ready across the body
+  armsRifle.rotation.x = 0.12;                      // muzzle dipped
   upper.add(armsRifle);
 
   add(armsRifle, box(0.08, 0.14, 0.3), 0.01, -0.04, -0.08, 0, 0, -0.08);    // stock
@@ -138,7 +142,7 @@ export function createFigure(color, opts = {}) {
 
   // Muzzle: the barrel tip, figure-local (armsRifle sits in `upper` at y 1.6).
   group.userData.muzzleOffset = new THREE.Vector3(
-    0.16 * bw, 1.62, 0.14 + 0.49 + rifleLength * 0.8);
+    0.26 * bw, 1.62, 0.12 + 0.49 + rifleLength * 0.8);
   group.userData.rifle = armsRifle;
   group.userData.rifleHomeY = armsRifle.position.y;
   group.userData.fadeMats = fadeMats;
