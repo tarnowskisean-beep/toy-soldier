@@ -36,6 +36,9 @@ export class Soldier {
       marking: classDef.marking,
       bandColor: classDef.ringColor,                  // helmet band = HUD color
     });
+    // Greens carry on the SCREEN-RIGHT shoulder by default — matching the
+    // aim camera's default shoulder (the camera drives swaps from there).
+    this.figure.userData.setRifleSide(1);
     scene.add(this.figure);
 
     this.position = new THREE.Vector3();
@@ -48,6 +51,7 @@ export class Soldier {
     this.crashDowned = false;// knocked out by the crash — ANY squadmate can wake him
     this.fireCooldown = 0;
     this.abilityCd = 0;      // cooldown on press-abilities (grenade/revive)
+    this.nades = classDef.ability && classDef.ability.uses ? classDef.ability.uses : 0;
 
     // Ammo: a magazine you burn and a reserve you carry. AI squadmates manage
     // theirs off-book — the economy is the player's problem by design.
@@ -55,6 +59,14 @@ export class Soldier {
     this.reserve = classDef.reserve;
     this.reloading = 0;      // seconds left on the current reload
     this.dryCd = 0;          // rate-limits the empty-rifle click
+
+    // GUNPLAY state: the cone is ALIVE. Sustained fire blooms it, pausing
+    // settles it; rounds snapping past rattle it (suppression). The sniper's
+    // scope sways until breath is held.
+    this.bloom = 0;          // 0..1, grows per shot
+    this.suppression = 0;    // 0..1, grows per near-miss
+    this.breath = 3.5;       // seconds of held breath remaining (scope)
+    this.holdingBreath = false;
 
     // Where the last hit came from (drives the HUD damage-direction arrow).
     this.lastHitFrom = new THREE.Vector3();
@@ -78,9 +90,11 @@ export class Soldier {
     this._coverSpot = null;                  // where HOLD digs in under fire
 
     // Walk-cycle state: phase advances with ground covered, amp blends
-    // stance ↔ stride so stopping doesn't freeze mid-step.
+    // stance ↔ stride so stopping doesn't freeze mid-step. _crouchT eases
+    // the crouch POSE in and out (0 standing → 1 on his haunches).
     this._walkPhase = 0;
     this._animAmp = 0;
+    this._crouchT = 0;
     this._animPrev = new THREE.Vector3();
 
     // Reused scratch vectors (avoid per-frame allocation).
@@ -104,6 +118,8 @@ export class Soldier {
     if (this.crouched) s *= 0.6;          // braced
     if (this.aiming) s *= 0.55;           // shouldered — sights on
     if (this.sprinting) s *= 2.4;         // running and gunning
+    // The cone is ALIVE: bloom from your own trigger, rattle from theirs.
+    s *= 1 + this.bloom * 1.5 + this.suppression * 0.9;
     return s;
   }
 
@@ -120,6 +136,14 @@ export class Soldier {
     this.fireCooldown -= dt;
     this.abilityCd = Math.max(0, this.abilityCd - dt);
     this.dryCd = Math.max(0, this.dryCd - dt);
+    // The cone settles when the trigger RESTS — bloom holds while you're
+    // still firing (a decay that outruns the gain means no bloom at all),
+    // then drains fast. Nerves settle slower.
+    this._bloomHold = Math.max(0, (this._bloomHold || 0) - dt);
+    if (this._bloomHold <= 0) this.bloom = Math.max(0, this.bloom - dt * 1.8);
+    this.suppression = Math.max(0, this.suppression - dt * 0.55);
+    if (this.holdingBreath) this.breath = Math.max(0, this.breath - dt);
+    else this.breath = Math.min(3.5, this.breath + dt * 0.8);
     if (this.reloading > 0) {
       this.reloading -= dt;
       if (this.reloading <= 0) {
@@ -133,31 +157,35 @@ export class Soldier {
     if (ctx.isActive) this._controlPlayer(ctx.input, dt);
     else              this._controlAI(dt, ctx);
 
-    // Sync the visible figure to our logical position/facing. Crouching
-    // squashes the toy down; POPPING OUT over cover rises most of the way
-    // back up — enough for the muzzle to clear a sandbag.
+    // Sync the visible figure to our logical position/facing. Crouching is
+    // a POSE (knees fold, hips drop — see figure.js), not a scale squash;
+    // POPPING OUT over cover rises most of the way back up — enough for the
+    // muzzle to clear a sandbag.
     this.figure.position.copy(this.position);
     this.figure.rotation.y = this.yaw;
-    const targetSquash = this.crouched ? (this.peeking ? 0.9 : 0.66) : 1;
-    this.figure.scale.y += (targetSquash - this.figure.scale.y) * Math.min(1, dt * 14);
+    const wantCrouch = this.crouched ? (this.peeking ? 0.25 : 1) : 0;
+    this._crouchT += (wantCrouch - this._crouchT) * Math.min(1, dt * 10);
     // Shouldering the rifle: swing it from across-the-chest onto the
     // sightline AND raise it to the cheek — aimed down the sights, visibly.
     const rifle = this.figure.userData.rifle;
     if (rifle) {
       const k = Math.min(1, dt * 10);
       const homeY = this.figure.userData.rifleHomeY;
+      const ys = rifle.scale.x;        // ±1: the mirror sign of the carrying shoulder
       // Low-ready carry (angled, muzzle dipped) ↔ shouldered on the sights.
-      rifle.rotation.y += ((this.aiming ? 0.02 : -0.25) - rifle.rotation.y) * k;
+      rifle.rotation.y += ((this.aiming ? 0.02 : -0.25) * ys - rifle.rotation.y) * k;
       rifle.position.y += ((this.aiming ? homeY + 0.16 : homeY) - rifle.position.y) * k;
       rifle.rotation.x += ((this.aiming ? -0.06 : 0.12) - rifle.rotation.x) * k;
     }
 
-    // Drive the walk cycle from actual ground covered.
+    // Drive the walk cycle from actual ground covered. The rate sets the
+    // CADENCE: smaller = longer strides, fewer steps — 2.6 made everyone
+    // scurry like wind-up toys.
     const moved = this.position.distanceTo(this._animPrev);
     this._animPrev.copy(this.position);
-    this._walkPhase += moved * 2.6;
+    this._walkPhase += moved * 2.0;
     this._animAmp += ((moved > 0.004 ? 1 : 0) - this._animAmp) * Math.min(1, dt * 9);
-    this.figure.userData.animate(this._walkPhase, this._animAmp);
+    this.figure.userData.animate(this._walkPhase, this._animAmp, this._crouchT);
   }
 
   // Find the nearest usable cover face in ANY direction within reach.
@@ -216,6 +244,10 @@ export class Soldier {
     this.coverNear = !!(face && (!face.tall || face.nearEdge));
     this.peeking = false;
     this.canLean = 0;
+    // Scope steadying: SHIFT while zoomed and planted holds your breath
+    // (Shift means sprint only when you're moving).
+    this.holdingBreath = this.zoomed && input.isDown('ShiftLeft') && this.breath > 0.05 &&
+      !input.isDown('KeyW') && !input.isDown('KeyA') && !input.isDown('KeyS') && !input.isDown('KeyD');
     // Sights slow the mouse for fine aim (the scope, even more).
     const sens = MOUSE_SENS * (this.zoomed ? 0.4 : this.aiming ? 0.65 : 1);
     this.yaw -= input.mouseDX * sens;
@@ -324,6 +356,8 @@ export class Soldier {
     }
     bullets.fire(this.muzzleWorldPosition(), this._aimDir(aimPoint), 'player', this.cls.damage);
     this.mag--;
+    this.bloom = Math.min(1, this.bloom + (this.cls.bloom ?? 0.14));
+    this._bloomHold = 0.22;          // bloom holds while the trigger works
     this.fireCooldown = this.fireInterval();
     if (this.mag === 0 && this.reserve > 0) this.startReload();
     return true;
@@ -334,6 +368,7 @@ export class Soldier {
     this.peeking = false;
     this.coverNear = false;
     this.canLean = 0;
+    this.holdingBreath = false;
     // Who should we shoot? An explicit ATTACK target if it's still alive,
     // otherwise the nearest enemy within our effective range.
     let engage = (this.order === ORDER.ATTACK && this._targetAlive())
@@ -369,6 +404,11 @@ export class Soldier {
       }
     }
 
+    // STANCE IS SHARED: when the soldier you're controlling sneaks, the
+    // squad sneaks — three buddies standing tall would hand every sentry
+    // your position and the stealth game with it.
+    const sneak = !!ctx.leaderCrouched;
+
     if (goal) {
       this._t.subVectors(goal, this.position); this._t.y = 0;
       const dist = this._t.length();
@@ -380,6 +420,7 @@ export class Soldier {
         // followers can at least jog.
         let speed = this.cls.speed;
         if (this.order === ORDER.FOLLOW && dist > 12) speed *= 1.5;
+        else if (sneak) speed *= 0.6;       // creep with the leader
         // navStep paths around furniture instead of grinding into it.
         const dir = navStep(this.nav, this, this.position, goal, speed, dt,
                             this.obstacles, 0.6, this.bounds);
@@ -393,9 +434,9 @@ export class Soldier {
       this.target = null;
     }
 
-    // Fighting from a standstill, an AI squadmate takes a knee — a smaller
-    // target that reads as a soldier, not a statue.
-    this.crouched = !!engage && !goal;
+    // Crouch with the leader; fighting from a standstill, take a knee — a
+    // smaller target that reads as a soldier, not a statue.
+    this.crouched = sneak || (!!engage && !goal);
 
     // Engage: turn to the enemy and fire on cooldown — but only with a clear
     // shot. A crate between us and the target means we hold fire (and our own

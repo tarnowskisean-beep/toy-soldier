@@ -44,8 +44,13 @@ Tone: Army Men — big furniture, toy-scale drama, played straight.
 
 - The same four soldiers (Leader / Heavy / Sniper / Medic). The loss in M2 is
   scripted to the story, not to attrition.
-- The systems: stealth (sight/sound/search), silent takedowns, the noise rules,
-  ammo economy, squad orders. Each mission adds ONE new pressure mechanic
+- The systems: stealth (sight/sound/search — sprint is HEARD), silent
+  takedowns, the noise rules, ammo + frag-pouch economy, the gunplay rhythm
+  (recoil/bloom, headshots, suppression both ways, settling enemy aim,
+  repositioning, scope breath), squad orders with shared stance (the squad
+  sneaks when you crouch), act checkpoints with in-place retry, the
+  state-driven score, contextual tips, the debrief card.
+  Each mission adds ONE new pressure mechanic
   (M1: the alarm radio. M2: the light cycle. M3: traffic. M4: darkness/sound.
   M5: combined arms. M6: the boss).
 - The wrecked plane is the visual motif: fresh wreck in M1, the shelf plane in M6.

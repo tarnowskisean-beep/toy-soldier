@@ -454,14 +454,18 @@ function buildHouse() {
   const lampLight = new THREE.PointLight(0xffc88a, 130, 64, 1.8);
   lampLight.position.set(50 * WS, 11 * WS, -36 * WS); scene.add(lampLight);
   // The lamp is SHOOTABLE: kill the bulb and its corner goes dark — sentries
-  // in the pool lose reach. (Loud way to buy darkness.)
+  // in the pool lose reach. (Loud way to buy darkness.) intensity0/emissive0
+  // are kept so a checkpoint rewind can relight it.
   const floorLamp = {
     alive: true,
     pos: new THREE.Vector3(50 * WS, 0, -36 * WS),
     bulbY: 11 * WS,
     radius: 34,
+    hitR: 3.2,
     light: lampLight,
     shade: lampShade,
+    intensity0: lampLight.intensity,
+    emissive0: lampShade.material.emissiveIntensity,
   };
   obstacles.push(new THREE.Box3(
     new THREE.Vector3(48.9 * WS, 0, -36.6 * WS), new THREE.Vector3(50.9 * WS, 12 * WS, -35.4 * WS)));
@@ -475,6 +479,19 @@ function buildHouse() {
   cornerShade.position.set(8 * WS, 3.6, -41 * WS); scene.add(cornerShade);
   const cornerLight = new THREE.PointLight(0xffc88a, 55, 42, 1.8);
   cornerLight.position.set(8 * WS, 3.4, -41 * WS); scene.add(cornerLight);
+  // Shootable too — one lamp obeying the rule and one ignoring it teaches
+  // "that mechanic doesn't exist." Every fixture with a bulb plays.
+  const cornerLamp = {
+    alive: true,
+    pos: new THREE.Vector3(8 * WS, 0, -41 * WS),
+    bulbY: 3.4,
+    radius: 24,
+    hitR: 2.1,
+    light: cornerLight,
+    shade: cornerShade,
+    intensity0: cornerLight.intensity,
+    emissive0: cornerShade.material.emissiveIntensity,
+  };
 
   // A second lamp glow in the study so the far rooms aren't pitch black.
   const studyLight = new THREE.PointLight(0xffc88a, 52, 45, 1.8);
@@ -572,7 +589,8 @@ function buildHouse() {
 
   return {
     scene, obstacles, coverPoints, bounds, nav,
-    exit, exitGlow: glow, supplies, radio, lamp: floorLamp,
+    exit, exitGlow: glow, supplies, radio,
+    lamps: [floorLamp, cornerLamp],
     ceiling, wreckSmoke,
     map: { x: 103, height: 162 },     // tactical-view camera for this floor plan
     fogCfg: { near: 38, far: 120 },   // the chase-cam reveal fog (map bypasses)

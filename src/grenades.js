@@ -86,6 +86,14 @@ export class Grenades {
     }
   }
 
+  // Checkpoint rewind: live grenades and flashes vanish without detonating.
+  clear() {
+    for (const n of this.nades) this.scene.remove(n.mesh);
+    for (const f of this.flashes) this.scene.remove(f.mesh);
+    this.nades.length = 0;
+    this.flashes.length = 0;
+  }
+
   _explode(pos, enemies) {
     // Area damage with linear falloff to the blast edge.
     for (const e of enemies.list) {
