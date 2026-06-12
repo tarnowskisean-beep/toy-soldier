@@ -153,4 +153,10 @@ export class Bullets {
     const i = this.active.indexOf(bullet);
     if (i !== -1) this._retire(i);
   }
+
+  // Checkpoint rewind: every round in flight vanishes. (Sparks and shards
+  // are cosmetic — they finish on their own.)
+  clear() {
+    for (let i = this.active.length - 1; i >= 0; i--) this._retire(i);
+  }
 }

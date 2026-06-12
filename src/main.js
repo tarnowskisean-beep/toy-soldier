@@ -59,6 +59,7 @@ bullets.onFire = (origin, team) => {
   enemies.hearGunshot(origin);
 };
 let shake = 0;
+let hitPause = 0;   // seconds of kill-frame micro-freeze left (takedowns)
 grenades.onBoom = (pos) => {
   sfx.boom(pos.distanceTo(squad.active.position));
   shake = Math.min(1, shake + Math.max(0.2, 1.1 - pos.distanceTo(squad.active.position) / 45));
@@ -213,30 +214,95 @@ function startPlaying() {
 
 // Stage banner: slides in under the objective line, lingers, fades.
 let toastTimer = null;
+let lastToastAt = -1e9;
 function showToast(text) {
   const el = $('toast');
   if (!el || !text) return;
   el.textContent = text;
   el.classList.add('show');
+  lastToastAt = performance.now();
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3800);
+}
+
+// --- ONE-TIME CONTEXTUAL TIPS ---
+// The briefing's wall of controls teaches nobody; the moment of need does.
+// Each tip fires once per session, queued politely behind stage banners.
+const tipsSeen = {};
+const tipQueue = [];
+function tip(key, text) {
+  if (tipsSeen[key]) return;
+  tipsSeen[key] = true;
+  tipQueue.push('TIP — ' + text);
+}
+
+function updateTips() {
+  if (tipQueue.length && performance.now() - lastToastAt > 4200) {
+    showToast(tipQueue.shift());
+  }
+  const a = squad.active;
+  if (a.coverNear) {
+    tip('cover', 'C snaps to cover. Aim (Z) to pop over low cover or lean past tall corners.');
+  }
+  if (!tipsSeen.suspicion && enemies.list.some((e) => !e.alerted && e.aware > 0.3)) {
+    tip('suspicion', 'That ? means he is getting suspicious — crouch (C) and break his line of sight.');
+  }
+  if (!tipsSeen.runner && enemies.radioThreat > 0) {
+    tip('runner', 'A scout is RUNNING FOR THE RADIO — drop him or beat him to it.');
+  }
+  if (a.zoomed) {
+    tip('breath', 'The scope sways with your pulse — hold SHIFT to hold your breath.');
+  }
+  if (!tipsSeen.headshot && enemies.headshots > 0) {
+    tip('headshot', 'HEADSHOT — clean hits above the shoulders crack for DOUBLE.');
+  }
+  if (!tipsSeen.lamp) {
+    for (const l of world.lamps || []) {
+      if (l.alive && Math.hypot(a.position.x - l.pos.x, a.position.z - l.pos.z) < 26) {
+        tip('lamp', 'Lamps are targets — shoot the bulb to darken a corner. The shot is loud.');
+        break;
+      }
+    }
+  }
 }
 
 function onWin() {
   state = 'won';
   sfx.sting(true);
+  sfx.setMusic('calm');
   if (document.pointerLockElement) document.exitPointerLock();
   const idx = MISSIONS.findIndex((m) => m.id === currentDef.id);
   const isLast = idx >= MISSIONS.length - 1;
   localStorage.setItem('ts_unlocked', Math.max(getUnlocked(), Math.min(idx + 2, MISSIONS.length)));
   $('winText').textContent = isLast ? 'CAMPAIGN COMPLETE — HOME AT LAST' : (currentDef.winText || 'OBJECTIVE COMPLETE');
   $('nextBtn').classList.toggle('hidden', isLast);
+
+  // THE DEBRIEF: what you did, in numbers worth replaying for. A mission
+  // that ends in one line wastes everything the player just pulled off.
+  const t = Math.max(0, Math.round(mission.playTime));
+  const clock = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  const kills = mission.killCount(enemies);
+  const silent = enemies.silent - mission.startSilent;
+  const heads = enemies.headshots - mission.startHead;
+  const detail = [silent > 0 ? `${silent} SILENT` : null, heads > 0 ? `${heads} HEAD` : null]
+    .filter(Boolean).join(', ');
+  const left = squad.members.filter((m) => !m.alive).map((m) => m.cls.name);
+  const rows = [
+    `TIME ${clock}   ·   TANGOS ${kills}${detail ? ` (${detail})` : ''}`,
+    enemies.alarmRaised ? 'ALARM — RAISED. The porch reserve came.' : 'ALARM — NEVER RAISED',
+    !enemies.firstSpotted ? 'GHOST — they never knew you were there' : null,
+    left.length === 0
+      ? 'SQUAD — ALL FOUR WALKED OUT'
+      : `LEFT BEHIND — ${left.join(', ')}`,
+  ].filter(Boolean);
+  $('debrief').innerHTML = rows.map((r) => `<div class="d-row">${r}</div>`).join('');
   winEl.classList.remove('hidden');
 }
 
 function onLose() {
   state = 'lost';
   sfx.sting(false);
+  sfx.setMusic('calm');
   if (document.pointerLockElement) document.exitPointerLock();
   loseEl.classList.remove('hidden');
 }
@@ -246,7 +312,26 @@ $('deployBtn').addEventListener('click', startPlaying);
 $('briefMenuBtn').addEventListener('click', showMenu);
 $('winMenuBtn').addEventListener('click', showMenu);
 $('loseMenuBtn').addEventListener('click', showMenu);
-$('retryBtn').addEventListener('click', () => { setScreen('mission:' + currentDef.id); location.reload(); });
+// RETRY rewinds to the last act checkpoint IN PLACE — no page reload, no
+// briefing click, no replaying acts you already won. Death costs the fight
+// you lost, nothing more.
+$('retryBtn').addEventListener('click', () => {
+  if (mission && mission.checkpoint &&
+      mission.restoreCheckpoint(squad, enemies, bullets, grenades)) {
+    hideAllScreens();
+    lastKills = enemies.kills;
+    lastPos.copy(squad.active.position);
+    shake = 0;
+    mapMode = false;
+    sfx.setMusic('calm');
+    objectiveEl.classList.remove('hidden');
+    state = 'playing';
+    input.requestLock();
+  } else {
+    setScreen('mission:' + currentDef.id);
+    location.reload();
+  }
+});
 $('nextBtn').addEventListener('click', () => {
   const idx = MISSIONS.findIndex((m) => m.id === currentDef.id);
   const next = MISSIONS[idx + 1];
@@ -378,6 +463,9 @@ function loop() {
 // One simulation+render step. Extracted from loop() so automation (and tests)
 // can step the game deterministically even when rAF is throttled.
 function tick(dt) {
+  // The kill-frame beat: for a blink after a takedown the whole sim runs at
+  // a third speed (the timer drains in real time, so it can't wind up stuck).
+  if (hitPause > 0) { hitPause -= dt; dt *= 0.3; }
   if (state === 'playing' && (input.locked || input.debugLock) && squad.alive) {
     if (input.consume('Digit1')) squad.setActive(0);
     if (input.consume('Digit2')) squad.setActive(1);
@@ -440,10 +528,13 @@ function tick(dt) {
     squad.update(dt, { input, enemies: enemies.list, bullets, free: enemies.combatStarted });
     if (input.firing && !mapMode && squad.active.tryFireAt(aim.firePoint, bullets)) {
       // Hearing is handled by bullets.onFire (one rule for every shot) —
-      // here it's just the flash and the camera kick.
+      // here it's the flash and the RECOIL: the sight climbs per shot with
+      // a little wander, by class. Hold the trigger and you fight the gun.
       muzzleLight.position.copy(squad.active.muzzleWorldPosition());
       muzzleLight.intensity = 26;
-      squad.active.pitch += 0.012;
+      const kick = squad.active.cls.recoil ?? 0.012;
+      squad.active.pitch = Math.min(0.9, squad.active.pitch + kick * (0.8 + Math.random() * 0.4));
+      squad.active.yaw += (Math.random() - 0.5) * kick * 0.6;
     }
     muzzleLight.intensity *= Math.pow(0.0001, dt);   // fast falloff
     grenades.update(dt, enemies);
@@ -452,6 +543,8 @@ function tick(dt) {
     checkLampHit();
     enemies.update(dt, squad, bullets);
     squad.takeBulletHits(bullets);
+    sfx.setMusic(enemies.musicState);   // the score follows the fight
+    updateTips();
 
     placeCamera(dt);
     updateZoom(dt);
@@ -461,19 +554,35 @@ function tick(dt) {
     updateAmmoHUD();
     updateDamageHUD();
     crosshair.classList.toggle('hit', enemies.hitFlash > 0);
+    // The crosshair BREATHES with your cone: bloom from your trigger,
+    // rattle from rounds snapping past. Read it, pace your bursts.
+    crosshair.style.scale = String(1 + squad.active.bloom * 0.9 + squad.active.suppression * 0.7);
 
     // Footsteps from actual ground covered; a kill gets its plastic THOCK.
+    // Sprinting boots are LOUD in the world, not just in your speakers —
+    // nearby sentries hear them and turn.
     stepAccum += squad.active.position.distanceTo(lastPos);
     lastPos.copy(squad.active.position);
     const stride = squad.active.crouched ? 1.15 : 1.7;
-    if (stepAccum > stride) { stepAccum = 0; sfx.footstep(); }
+    if (stepAccum > stride) {
+      stepAccum = 0;
+      sfx.footstep();
+      if (squad.active.sprinting) enemies.hearFootstep(squad.active.position);
+    }
     if (enemies.kills > lastKills) { sfx.kill(); lastKills = enemies.kills; }
     exitGlow.material.opacity = 0.25 + 0.15 * Math.sin(performance.now() * 0.004);
     vignette.classList.toggle('show', squad.active.alive && squad.active.health < 35);
 
     // --- Mission objective ---
+    const stageWas = mission.stageIdx;
     mission.update(dt, squad, enemies, bullets);
+    // Act 2 opens = the squad is up: teach the two orders squad-stealth runs on.
+    if (mission.stageIdx !== stageWas && mission.stage() && mission.stage().type === 'multi') {
+      tip('squadstealth', 'Squad up: X toggles HOLD FIRE, and they sneak when you crouch.');
+    }
     objectiveEl.textContent = mission.statusText(enemies) + distTxt;
+    // The radio line burns red while a runner is loose.
+    objectiveEl.classList.toggle('alarm', enemies.radioThreat > 0);
     if (mission.state === 'won') onWin();
     else if (mission.state === 'lost') onLose();
   }
@@ -493,7 +602,7 @@ let camDist = CAM_DISTANCE;
 let aimT = 0;            // 0 = chase camera, 1 = over-the-shoulder aim camera
 let shoulderSign = 1;       // which shoulder the aim camera rides
 let shoulderSmooth = 1;     // eased version, so swaps swing instead of snapping
-let peekShoulderLock = false; // frozen choice while popped/leaning from cover
+let peekScoreCd = 0;        // slow re-check clock while peeking (stable, never frozen)
 
 function placeCamera(dt = 0) {
   // The reveal fog is for eyes at soldier height — the tactical map reads
@@ -524,69 +633,91 @@ function placeCamera(dt = 0) {
   for (const e of enemies.list) e.fig.visible = true;
   const a = squad.active;
 
-  // Aiming pulls the camera in over a shoulder: closer, lower, and offset so
-  // you see your soldier shoulder the rifle along the sightline.
+  // Aiming pulls the camera in over a shoulder: closer, slightly above, and
+  // offset so you see your soldier shoulder the rifle along the sightline.
+  // FRAMING: the offset-to-boom ratio decides where the soldier sits on
+  // screen. 1.15 over 4.0 parks him about a third from center — visible,
+  // readable, and the crosshair corridor stays clear. (The old 1.65 over
+  // 3.35 shoved him 3/4 of the way to the edge: half a soldier at the
+  // border aiming at a screen of nothing.)
   aimT += ((a.aiming ? 1 : 0) - aimT) * Math.min(1, dt * 9);
-  const boomLen = CAM_DISTANCE + (3.35 - CAM_DISTANCE) * aimT;
+  const boomLen = CAM_DISTANCE + (4.0 - CAM_DISTANCE) * aimT;
+  // SCOPE SWAY: glass magnifies your pulse — the reticle drifts in a slow
+  // figure-eight; hold SHIFT (breath) to steady it for a few seconds. The
+  // sway is applied to the camera's view, and fire converges on the
+  // crosshair — so through a scope, the drift IS your ballistics.
+  let vyaw = a.yaw, vpitch = a.pitch;
+  if (a.zoomed) {
+    const t = performance.now() * 0.001;
+    const calm = a.holdingBreath ? 0.12 : 1;
+    vyaw += (Math.sin(t * 1.13) * 0.0042 + Math.sin(t * 2.17) * 0.0023) * calm;
+    vpitch += (Math.cos(t * 0.97) * 0.0036 + Math.sin(t * 1.71) * 0.0019) * calm;
+  }
   // (Screen-right is world MINUS the facing-right vector for this camera.)
-  const rx = -Math.cos(a.yaw), rz = Math.sin(a.yaw);
-  const ty = a.position.y + (CAM_HEIGHT + (2.05 - CAM_HEIGHT) * aimT) * (a.crouched ? 0.7 : 1);
-  const cp = Math.cos(a.pitch), sp = Math.sin(a.pitch);
-  const dx = -Math.sin(a.yaw) * cp, dy = sp, dz = -Math.cos(a.yaw) * cp;
+  const rx = -Math.cos(vyaw), rz = Math.sin(vyaw);
+  // Aim look-axis rides just over the helmet, so the soldier settles into
+  // the lower third and the view ahead opens up. Camera height follows the
+  // EFFECTIVE stance: ducked is low, but POPPING OUT rises with the body —
+  // a lens left at duck height stares into the back of the sandbags while
+  // your soldier fires over them.
+  const stanceK = a.crouched ? (a.peeking ? 0.92 : 0.7) : 1;
+  const ty = a.position.y + (CAM_HEIGHT + (2.3 - CAM_HEIGHT) * aimT) * stanceK;
+  const cp = Math.cos(vpitch), sp = Math.sin(vpitch);
+  const dx = -Math.sin(vyaw) * cp, dy = sp, dz = -Math.cos(vyaw) * cp;
 
   // SMART SHOULDER: while aiming, test the boom over BOTH shoulders and ride
   // whichever side has clear air — leaning around a corner with the cover on
   // the camera's side used to bury the view in the box.
   const leanBias = (a.peeking && a.coverBox && a.coverBox.max.y > 1.45) ? 1.3 : 1;
-  const sideMag = 1.65 * aimT * leanBias;
-  if (a.peeking) {
-    // Popped out or leaning: pick the shoulder ONCE when the peek starts and
-    // FREEZE it — re-evaluating every frame made the view flip sides as you
-    // turned to track targets.
-    if (!peekShoulderLock) {
-      peekShoulderLock = true;
-      if (a.inCover && a.canLean !== 0 && a.coverBox && a.coverBox.max.y > 1.45) {
-        // Leaning: ride the open side, away from the wall.
-        const n = a.coverSide === 'px' ? [1, 0] : a.coverSide === 'nx' ? [-1, 0]
-                : a.coverSide === 'pz' ? [0, 1] : [0, -1];
-        const lx = -n[1] * a.canLean, lz = n[0] * a.canLean;
-        shoulderSign = (lx * rx + lz * rz) >= 0 ? 1 : -1;
-      }
-      // Low-cover pop: keep whatever shoulder we already had — stability
-      // beats optimality for the half-second you're up.
+  const sideMag = 1.15 * aimT * leanBias;
+  // Score a shoulder by BOTH the boom (can the camera sit back) and the
+  // VIEW (what fills the screen from there). Boom-only scoring happily
+  // parked the camera where two-thirds of the frame was the wall beside
+  // you — a clear arm pointing at cardboard.
+  const scoreFor = (sign) => {
+    const cx = a.position.x + rx * sideMag * sign;
+    const cz = a.position.z + rz * sideMag * sign;
+    let boom = boomLen;
+    const ex2 = cx + dx * boomLen, ey2 = ty + dy * boomLen, ez2 = cz + dz * boomLen;
+    for (const b of cameraBlockers) {
+      const t = segBoxEntryT(cx, ty, cz, ex2, ey2, ez2, b);
+      if (t < Infinity) boom = Math.min(boom, t * boomLen);
     }
-  } else if (aimT > 0.25) {
-    // Score a shoulder by BOTH the boom (can the camera sit back) and the
-    // VIEW (what fills the screen from there). Boom-only scoring happily
-    // parked the camera where two-thirds of the frame was the wall beside
-    // you — a clear arm pointing at cardboard.
-    const scoreFor = (sign) => {
-      const cx = a.position.x + rx * sideMag * sign;
-      const cz = a.position.z + rz * sideMag * sign;
-      let boom = boomLen;
-      const ex2 = cx + dx * boomLen, ey2 = ty + dy * boomLen, ez2 = cz + dz * boomLen;
-      for (const b of cameraBlockers) {
-        const t = segBoxEntryT(cx, ty, cz, ex2, ey2, ez2, b);
-        if (t < Infinity) boom = Math.min(boom, t * boomLen);
+    // From where the camera would actually sit, how far ahead is open?
+    const camX = cx + dx * boom, camY = ty + dy * boom, camZ = cz + dz * boom;
+    const FWD = 16;
+    let view = FWD;
+    const fx2 = camX - dx * FWD, fy2 = camY - dy * FWD, fz2 = camZ - dz * FWD;
+    for (const b of cameraBlockers) {
+      const t = segBoxEntryT(camX, camY, camZ, fx2, fy2, fz2, b);
+      if (t < Infinity) view = Math.min(view, t * FWD);
+    }
+    return boom + view * 1.5;
+  };
+  // ONE rule for every pick: ride the shoulder that can SEE. While peeking
+  // the re-check runs on a slow clock with a stricter swap bar — stable
+  // while you track targets, but never FROZEN: a frozen wrong pick parks
+  // the crosshair on the cover face ("I'm peering and I can't see").
+  if (aimT > 0.25) {
+    if (a.peeking) {
+      peekScoreCd -= dt;
+      if (peekScoreCd <= 0) {
+        peekScoreCd = 0.35;
+        if (scoreFor(-shoulderSign) > scoreFor(shoulderSign) * 1.5 + 0.8) shoulderSign = -shoulderSign;
       }
-      // From where the camera would actually sit, how far ahead is open?
-      const camX = cx + dx * boom, camY = ty + dy * boom, camZ = cz + dz * boom;
-      const FWD = 16;
-      let view = FWD;
-      const fx2 = camX - dx * FWD, fy2 = camY - dy * FWD, fz2 = camZ - dz * FWD;
-      for (const b of cameraBlockers) {
-        const t = segBoxEntryT(camX, camY, camZ, fx2, fy2, fz2, b);
-        if (t < Infinity) view = Math.min(view, t * FWD);
-      }
-      return boom + view * 1.5;
-    };
-    // Hysteresis: only swap when the other shoulder is clearly better.
-    if (scoreFor(-shoulderSign) > scoreFor(shoulderSign) * 1.25 + 0.5) shoulderSign = -shoulderSign;
+    } else {
+      peekScoreCd = 0;
+      // Hysteresis: only swap when the other shoulder is clearly better.
+      if (scoreFor(-shoulderSign) > scoreFor(shoulderSign) * 1.25 + 0.5) shoulderSign = -shoulderSign;
+    }
   }
-  if (!a.peeking) peekShoulderLock = false;   // re-decide on the NEXT pop
   shoulderSmooth += (shoulderSign - shoulderSmooth) * Math.min(1, dt * 8);
-  const tx = a.position.x + rx * sideMag * shoulderSmooth;
-  const tz = a.position.z + rz * sideMag * shoulderSmooth;
+  // The rifle rides the CAMERA's shoulder: peer over the right, carry on the
+  // right; swap shoulders and the gun crosses with you. A right-shoulder
+  // view down a left-shoulder gun reads wrong from behind.
+  a.figure.userData.setRifleSide(shoulderSign);
+  let tx = a.position.x + rx * sideMag * shoulderSmooth;
+  let tz = a.position.z + rz * sideMag * shoulderSmooth;
 
   // The camera is on a boom arm behind the soldier. Cast the arm against the
   // walls and pull the camera IN FRONT of the first one it would cross —
@@ -600,6 +731,16 @@ function placeCamera(dt = 0) {
   want = Math.max(1.4, want);
   // Snap IN instantly (never clip a wall), ease back OUT (no popping).
   camDist = want < camDist ? want : camDist + (want - camDist) * Math.min(1, dt * 5);
+
+  // FRAMING GUARD: the shoulder offset only makes sense relative to how far
+  // back the camera actually sits. When a wall collapses the boom, a fixed
+  // lateral offset becomes a huge angle and hurls the soldier off the screen
+  // edge (worst while leaning at cover — the exact moment you need to see
+  // him). Scale the offset with the real camera distance, floored so the
+  // view still reads over-the-shoulder.
+  const frameK = Math.max(0.4, Math.min(1, camDist / boomLen));
+  tx = a.position.x + rx * sideMag * frameK * shoulderSmooth;
+  tz = a.position.z + rz * sideMag * frameK * shoulderSmooth;
 
   camera.position.set(tx + dx * camDist, ty + dy * camDist, tz + dz * camDist);
   // Looking UP swings the boom low — keep the lens off the floorboards
@@ -616,15 +757,33 @@ function placeCamera(dt = 0) {
 
   // A soldier between you and the lens goes ghost-transparent — you should
   // never eat a screenful of your buddy's back (or, pressed against a wall,
-  // your own helmet). Distance is measured to the CHEST, where the camera
-  // actually collides with the figure.
+  // your own helmet). Two tests: CLOSE to the lens (anyone, chest-measured),
+  // or a FOLLOWER standing in the VIEW CORRIDOR between the camera and what
+  // you're looking at — a buddy 4u out is past the close fade but still
+  // fills a third of the frame at this FOV. The man you're controlling is
+  // exempt from the corridor test: he belongs in frame.
+  const vcx = tx - camera.position.x, vcy = ty - camera.position.y, vcz = tz - camera.position.z;
+  const vlen = Math.hypot(vcx, vcy, vcz) || 1;
+  const ux = vcx / vlen, uy = vcy / vlen, uz = vcz / vlen;
   for (const m of squad.members) {
     const p = m.figure.position;
     const dcx = p.x - camera.position.x;
     const dcy = p.y + 1.4 - camera.position.y;
     const dcz = p.z - camera.position.z;
     const d = Math.sqrt(dcx * dcx + dcy * dcy + dcz * dcz);
-    const op = Math.max(0, Math.min(1, (d - 1.4) / 1.2));
+    let op = Math.max(0, Math.min(1, (d - 1.4) / 1.2));
+    if (m !== a) {
+      const along = dcx * ux + dcy * uy + dcz * uz;
+      if (along > 0.3 && along < 7) {
+        const ox2 = dcx - ux * along, oy2 = dcy - uy * along, oz2 = dcz - uz * along;
+        const perp = Math.sqrt(ox2 * ox2 + oy2 * oy2 + oz2 * oz2);
+        // On-axis and near = hard ghost (~0.18); fades back in as he
+        // clears the corridor or recedes toward the target.
+        const block = Math.max(0, Math.min(1, (2.2 - perp) / 1.2))
+                    * Math.max(0, Math.min(1, (7 - along) / 2.5));
+        op = Math.min(op, 1 - 0.82 * block);
+      }
+    }
     for (const mat of m.figure.userData.fadeMats) {
       mat.transparent = op < 1;
       mat.opacity = op;
@@ -641,24 +800,25 @@ function orderBark(text) {
   }
 }
 
-// The floor lamp is a TARGET: kill the bulb, darken the corner — sentries in
+// Every lamp is a TARGET: kill the bulb, darken its corner — sentries in
 // the pool lose reach (the shot itself is as loud as any other).
 function checkLampHit() {
-  const lamp = world.lamp;
-  if (!lamp || !lamp.alive) return;
-  for (const b of bullets.active) {
-    if (b.team !== 'player') continue;
-    const dx = b.mesh.position.x - lamp.pos.x;
-    const dy = b.mesh.position.y - lamp.bulbY;
-    const dz = b.mesh.position.z - lamp.pos.z;
-    if (dx * dx + dy * dy + dz * dz < 3.2 * 3.2) {
-      lamp.alive = false;
-      lamp.light.intensity = 0;
-      lamp.shade.material.emissiveIntensity = 0;
-      sfx.glass();
-      bullets.burst(b.mesh.position);
-      bullets.retireBullet(b);
-      return;
+  for (const lamp of world.lamps || []) {
+    if (!lamp.alive) continue;
+    for (const b of bullets.active) {
+      if (b.team !== 'player') continue;
+      const dx = b.mesh.position.x - lamp.pos.x;
+      const dy = b.mesh.position.y - lamp.bulbY;
+      const dz = b.mesh.position.z - lamp.pos.z;
+      if (dx * dx + dy * dy + dz * dz < lamp.hitR * lamp.hitR) {
+        lamp.alive = false;
+        lamp.light.intensity = 0;
+        lamp.shade.material.emissiveIntensity = 0;
+        sfx.glass();
+        bullets.burst(b.mesh.position);
+        bullets.retireBullet(b);
+        break;
+      }
     }
   }
 }
@@ -687,8 +847,10 @@ function takedownCandidate() {
   return best;
 }
 
-// E is the HANDS button: revive the buddy beside you (priority), or drop the
-// sentry whose back is turned.
+// E is the HANDS button: get the buddy beside you on his feet (priority), or
+// drop the sentry whose back is turned. ONE interaction for every downed man
+// — crash-stunned, caged, hiding, or shot — so the hold-E habit learned at
+// the first rescue is never wrong again. Only the timer changes.
 let reviveT = 0;
 function handleInteract(dt) {
   const a = squad.active;
@@ -702,18 +864,30 @@ function handleInteract(dt) {
   }
   if (mate && !mapMode) {
     const medic = a.cls.key === 'medic';
+    const crash = mate.crashDowned;
+    const hiding = crash && mate._pose === 'hiding';
+    const prison = crash && mate._pose === 'prison';
+    // Crash-stunned men wake faster than the combat-shot; a hider just
+    // needs the nod.
+    const need = crash ? (hiding ? 0.7 : 2.0) : 2.5;
     if (input.isDown('KeyE')) {
       reviveT += dt * (medic ? 2.1 : 1);
-      takedownEl.textContent = `REVIVING… ${Math.min(99, Math.round(reviveT / 2.5 * 100))}%`;
-      if (reviveT >= 2.5) {
-        mate.revive(medic ? 0.65 : 0.35);
+      const verb = crash ? 'GETTING HIM UP' : 'REVIVING';
+      takedownEl.textContent = `${verb}… ${Math.min(99, Math.round(reviveT / need * 100))}%`;
+      if (reviveT >= need) {
+        mate.revive(crash ? (hiding ? 0.85 : 0.6) : (medic ? 0.65 : 0.35));
         sfx.pickup();
-        barks.say(mate.figure, pick(['Back in it!', 'Thanks — I owe you.', 'On my feet!']), '#7dff7d');
+        const line = hiding ? pick(['Thought you would never come.', 'I kept my head down, sir.'])
+          : prison ? pick(['They had me in a CAGE.', 'Took you long enough — let me out!'])
+          : crash ? pick(['On my feet — thanks!', 'Ow. Where are they?', 'Back in it!'])
+          : pick(['Back in it!', 'Thanks — I owe you.', 'On my feet!']);
+        barks.say(mate.figure, line, '#7dff7d');
         reviveT = 0;
       }
     } else {
       reviveT = Math.max(0, reviveT - dt * 2);
-      takedownEl.textContent = `E  REVIVE ${mate.cls.name}`;
+      const verb = prison ? 'BREAK OUT' : hiding ? 'BRING IN' : crash ? 'GET UP' : 'REVIVE';
+      takedownEl.textContent = `E  ${verb} — ${mate.cls.name}`;
     }
     takedownEl.classList.add('show');
     peekEl.classList.remove('show');
@@ -722,24 +896,36 @@ function handleInteract(dt) {
   reviveT = 0;
 
   const cand = takedownCandidate();
-  if (cand) takedownEl.textContent = 'E  SILENT TAKEDOWN';
+  if (cand) {
+    takedownEl.textContent = 'E  SILENT TAKEDOWN';
+    tip('takedown', 'A takedown is QUIET — only a buddy right beside him hears the body drop.');
+  }
   takedownEl.classList.toggle('show', !!cand && !mapMode);
   if (cand && input.consume('KeyE')) {
-    enemies.takedown(cand, squad.active.position);
-    sfx.takedown();
+    const kind = enemies.takedown(cand, squad.active.position);
+    if (kind) {
+      sfx.takedown(kind);                  // foley matched to the finisher
+      shake = Math.min(1, shake + 0.16);   // the grab lands with a little weight
+      hitPause = 0.09;                     // …and a blink of frozen time
+    }
   }
   // Cover affordances: the snap when you're near it; in it, the pop (low
   // cover), the lean (at a tall face's corner), or directions to one.
+  const tall = a.inCover && a.coverBox && a.coverBox.max.y > 1.45;
   const inCoverIdle = !mapMode && a.alive && a.inCover && !a.aiming && !cand;
   const showTake = !mapMode && a.alive && !a.inCover && a.coverNear && !a.aiming && !cand;
+  // Sights up against a tall face with no corner in reach = a screen of
+  // wall and no shot. Say WHY, right when it happens.
+  const wallAim = !mapMode && a.alive && a.inCover && a.aiming && tall && !a.canLean;
   if (inCoverIdle) {
-    const tall = a.coverBox && a.coverBox.max.y > 1.45;
     peekEl.textContent = !tall ? 'Z  POP OUT'
       : (a.canLean ? 'Z  LEAN OUT' : 'A/D  SLIDE TO A CORNER');
+  } else if (wallAim) {
+    peekEl.textContent = 'A/D  SLIDE TO A CORNER TO LEAN';
   } else if (showTake) {
     peekEl.textContent = 'C  TAKE COVER';
   }
-  peekEl.classList.toggle('show', inCoverIdle || showTake);
+  peekEl.classList.toggle('show', inCoverIdle || showTake || wallAim);
 }
 
 function handleAbility(aim) {
@@ -759,8 +945,15 @@ function handleAbility(aim) {
     a.suppressing = false;
     if (input.consume('Space') && a.abilityCd <= 0) {
       if (ab.key === 'grenade') {
-        grenades.throwAt(a.muzzleWorldPosition(), aim.point);
-        a.abilityCd = ab.cooldown;
+        // Frags come out of a POUCH, not a cooldown — supply drops refill it.
+        if (a.nades > 0) {
+          grenades.throwAt(a.muzzleWorldPosition(), aim.point);
+          a.nades--;
+          a.abilityCd = ab.cooldown;
+        } else {
+          sfx.dry();
+          tip('nonades', 'Frag pouch is empty — SUPPLY CRATES carry more.');
+        }
       } else if (ab.key === 'revive') {
         if (squad.reviveNear(a)) a.abilityCd = ab.cooldown;
       }
@@ -818,10 +1011,13 @@ function updateDamageHUD() {
 
 function updateAbilityHUD() {
   const a = squad.active, ab = a.cls.ability;
-  abilityEl.textContent = (ab.input === 'aim' ? 'Z' : 'SPACE') + '  ' + ab.name;
+  let label = (ab.input === 'aim' ? 'Z' : 'SPACE') + '  ' + ab.name;
+  if (ab.key === 'grenade') label += `  ×${a.nades}`;
+  abilityEl.textContent = label;
   const engaged = (ab.key === 'suppress' && a.suppressing) || (ab.key === 'scope' && a.zoomed);
   abilityEl.classList.toggle('active', engaged);
-  abilityEl.classList.toggle('cooldown', ab.input === 'press' && a.abilityCd > 0);
+  abilityEl.classList.toggle('cooldown',
+    ab.input === 'press' && (a.abilityCd > 0 || (ab.key === 'grenade' && a.nades <= 0)));
 }
 
 try { $('buildtag').textContent = 'build ' + __BUILD__; } catch (e) { /* dev without define */ }
