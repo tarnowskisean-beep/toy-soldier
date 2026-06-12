@@ -42,7 +42,9 @@ const HIT_RADIUS = 0.95;
 const TORSO_Y = 1.1;           // where bullets land / where you aim
 const TOUCH_RANGE = 2.0;
 const TOUCH_DPS = 20;
-const CALL_TIME = 1.5;         // seconds at the radio to raise the alarm
+// The call is a WINDOW, not a flick of a switch: long enough to sprint in
+// and stop it once you hear the handset beeps climbing.
+const CALL_TIME = 4.0;
 
 // Detection model.
 const SIGHT_RANGE = 29;        // how far a sentry can see
@@ -50,6 +52,7 @@ const SIGHT_CONE = 0.2;        // dot(facing, toTarget) must exceed this (~78°)
 const FIGHT_SIGHT = 43;        // an ALERTED man looks all around, a bit farther
 const HEAR_RANGE = 21;         // gunfire within this wakes a sentry
 const BLAST_HEAR = 33;         // a grenade is the loudest thing in the house
+const FOOTSTEP_HEAR = 9;       // sprinting boots carry this far — sneak the last stretch
 const SHOUT_RANGE = 11;        // an alerted soldier wakes friends within this
 const AWARE_RATE = 2.4;        // seconds^-1 of suspicion while you're visible
 const AWARE_DECAY = 0.5;
@@ -82,14 +85,19 @@ export class Enemies {
     this.bounds = bounds;
     this.list = [];
     this.dying = [];               // knockdown animations in flight
+    this.corpses = [];             // takedown bodies at rest (cleared on checkpoint rewind)
     this.kills = 0;
+    this.silent = 0;               // of those, how many were quiet takedowns
+    this.headshots = 0;            // clean hits above the shoulders
     this.combatStarted = false;    // green ROE: squad AI holds fire until this
     this.firstSpotted = false;     // drops the UNDETECTED tag
     this.hitFlash = 0;             // >0 briefly when a player bullet lands (HUD hitmarker)
     this.radio = null;             // the tan field radio (mission wires it up)
-    this.lamp = null;              // the floor lamp (shoot it out = dark pocket)
+    this.lamps = [];               // shootable lights (kill the bulb = dark pocket)
     this.reserveLayout = null;     // who comes through the door if the alarm sounds
     this.alarmRaised = false;
+    this.musicState = 'calm';      // 'calm' | 'tension' | 'combat' — drives the score
+    this._combatUntil = 0;
     this._v = new THREE.Vector3();
     this._g = new THREE.Vector3();
   }
@@ -99,44 +107,97 @@ export class Enemies {
   // Spawns are clamped to standable ground — a spawn inside furniture would be
   // blind (LOS from inside a box always fails) and stuck.
   spawnLayout(layout) {
-    for (const s of layout) {
-      const T = TYPES[s.type || 'rifle'];
-      const fig = createFigure(0xcdb072, T.fig);
-      // Elevated posts (lookouts) spawn exactly where placed — ON the tower;
-      // ground troops clamp to standable cells.
-      const spot = s.baseY ? { x: s.x, z: s.z } : this.nav.nearestOpen(s.x, s.z);
-      const pos = new THREE.Vector3(spot.x, 0, spot.z);
-      fig.position.copy(pos);
-      fig.position.y = s.baseY || 0;
-      fig.rotation.y = s.facing;
-      this.scene.add(fig);
+    for (const s of layout) this._spawnOne(s);
+  }
 
-      const tell = new THREE.Sprite(MAT_Q);
-      tell.scale.set(1.5, 1.5, 1);
-      tell.position.set(0, 3.1, 0);
-      tell.visible = false;
-      fig.add(tell);
+  _spawnOne(s) {
+    const T = TYPES[s.type || 'rifle'];
+    const fig = createFigure(0xcdb072, T.fig);
+    // Elevated posts (lookouts) spawn exactly where placed — ON the tower;
+    // ground troops clamp to standable cells.
+    const spot = s.baseY ? { x: s.x, z: s.z } : this.nav.nearestOpen(s.x, s.z);
+    const pos = new THREE.Vector3(spot.x, 0, spot.z);
+    fig.position.copy(pos);
+    fig.position.y = s.baseY || 0;
+    fig.rotation.y = s.facing;
+    this.scene.add(fig);
 
-      this.list.push({
-        fig, pos, tell,
-        type: s.type || 'rifle',
-        hp: T.hp, speed: T.speed, damage: T.damage,
-        fireInterval: T.fireInterval, spread: T.spread,
-        burst: T.burst || 0, burstPause: T.burstPause || 0, burstLeft: T.burst || 0,
-        runner: !!T.runner,
-        static: !!T.static, sightMult: T.sightMult || 1, cone: T.cone ?? SIGHT_CONE,
-        baseY: s.baseY || 0,
-        fireCd: Math.random() * 0.5,
-        recheck: 0, cover: null, suppressed: 0, stagger: 0,
-        alerted: false, aware: 0, alertFlash: 0, alertedFor: 0, callT: 0,
-        facing: s.facing,
-        home: { x: spot.x, z: spot.z, facing: s.facing },   // the post he returns to
-        lastKnown: new THREE.Vector3(),                      // where he THINKS you are
-        hasIntel: false, searching: false, searchT: 0,
-        panicT: 0, panicFrom: new THREE.Vector3(),           // GRENADE! scatter
-        patrol: s.patrol ? { a: { x: spot.x, z: spot.z }, b: { ...s.patrol }, toB: true } : null,
-      });
+    const tell = new THREE.Sprite(MAT_Q);
+    tell.scale.set(1.5, 1.5, 1);
+    tell.position.set(0, 3.1, 0);
+    tell.visible = false;
+    fig.add(tell);
+
+    const e = {
+      fig, pos, tell,
+      type: s.type || 'rifle',
+      hp: T.hp, speed: T.speed, damage: T.damage,
+      fireInterval: T.fireInterval, spread: T.spread,
+      burst: T.burst || 0, burstPause: T.burstPause || 0, burstLeft: T.burst || 0,
+      runner: !!T.runner,
+      static: !!T.static, sightMult: T.sightMult || 1, cone: T.cone ?? SIGHT_CONE,
+      baseY: s.baseY || 0,
+      fireCd: Math.random() * 0.5,
+      recheck: 0, cover: null, suppressed: 0, stagger: 0,
+      alerted: false, aware: 0, alertFlash: 0, alertedFor: 0, callT: 0,
+      runningToRadio: false,
+      facing: s.facing,
+      home: { x: spot.x, z: spot.z, facing: s.facing },   // the post he returns to
+      lastKnown: new THREE.Vector3(),                      // where he THINKS you are
+      hasIntel: false, searching: false, searchT: 0,
+      panicT: 0, panicFrom: new THREE.Vector3(),           // GRENADE! scatter
+      patrol: s.patrol ? { a: { x: spot.x, z: spot.z }, b: { ...s.patrol }, toB: true } : null,
+    };
+    this.list.push(e);
+    return e;
+  }
+
+  // --- Checkpoint support: freeze the occupation, rewind it later. ---
+  // Restored men come back CALM at their snapshotted spots — a checkpoint is
+  // a fresh footing, not a resumed firefight.
+  snapshot() {
+    return {
+      kills: this.kills,
+      silent: this.silent,
+      headshots: this.headshots,
+      alarmRaised: this.alarmRaised,
+      combatStarted: this.combatStarted,
+      firstSpotted: this.firstSpotted,
+      list: this.list.map((e) => ({
+        x: e.pos.x, z: e.pos.z, facing: e.facing, type: e.type, baseY: e.baseY,
+        hp: e.hp,
+        home: { ...e.home },
+        patrol: e.patrol
+          ? { ax: e.patrol.a.x, az: e.patrol.a.z, bx: e.patrol.b.x, bz: e.patrol.b.z, toB: e.patrol.toB }
+          : null,
+      })),
+    };
+  }
+
+  restore(snap) {
+    for (const e of this.list) this.scene.remove(e.fig);
+    for (const d of this.dying) this.scene.remove(d.fig);
+    for (const f of this.corpses) this.scene.remove(f);
+    this.list.length = 0;
+    this.dying.length = 0;
+    this.corpses.length = 0;
+    for (const s of snap.list) {
+      const e = this._spawnOne({ x: s.x, z: s.z, facing: s.facing, type: s.type, baseY: s.baseY });
+      e.hp = s.hp;
+      e.home = { ...s.home };
+      if (s.patrol) {
+        e.patrol = { a: { x: s.patrol.ax, z: s.patrol.az }, b: { x: s.patrol.bx, z: s.patrol.bz }, toB: s.patrol.toB };
+      }
     }
+    this.kills = snap.kills;
+    this.silent = snap.silent;
+    this.headshots = snap.headshots || 0;
+    this.alarmRaised = snap.alarmRaised;
+    this.combatStarted = snap.combatStarted;
+    this.firstSpotted = snap.firstSpotted;
+    this.hitFlash = 0;
+    this._combatUntil = 0;
+    this.musicState = 'calm';
   }
 
   // The radio got through: the porch reserve comes in the front door, hunting.
@@ -169,6 +230,7 @@ export class Enemies {
     if (Math.random() < 0.65) {
       barks.say(e.fig, pick(['INTRUDERS!', 'CONTACT!', 'GREENS — HERE!']), '#ffd23d');
     }
+    sfx.spotted();                  // the "!" has a SOUND (throttled inside)
     this.firstSpotted = true;
     this.combatStarted = true;
     // Shout: wake nearby friends and point them the same way.
@@ -189,6 +251,30 @@ export class Enemies {
     }
   }
 
+  // Sprinting boots on hardwood. Not a gunshot — a nearby sentry doesn't
+  // ALERT, he gets SUSPICIOUS and turns toward the noise. Keep sprinting in
+  // his lap and suspicion does the rest. This is what makes the last few
+  // steps of a takedown approach a crouch, not a charge.
+  hearFootstep(pos) {
+    for (const e of this.list) {
+      if (e.alerted) continue;
+      const d = Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z);
+      if (d > FOOTSTEP_HEAR) continue;
+      e.aware = Math.min(1.25, e.aware + 0.3);
+      e.lastKnown.set(pos.x, 0, pos.z);
+      e.hasIntel = true;
+      if (e.aware >= 0.5 && !e._blip) {
+        e._blip = true;
+        sfx.suspicion(d);
+      }
+      if (e.aware > 0.5 && !e.static) {     // turn toward the noise
+        e.facing = Math.atan2(pos.x - e.pos.x, pos.z - e.pos.z);
+        e.fig.rotation.y = e.facing;
+      }
+      if (e.aware >= 1) this.alert(e, pos);
+    }
+  }
+
   // A silent takedown: the victim drops without a shot. Only the SCUFFLE is
   // audible — a buddy standing beside him hears the body drop; a lone sentry
   // dies unnoticed. This is what makes two-man posts a puzzle.
@@ -201,6 +287,7 @@ export class Enemies {
     e.fig.remove(e.tell);
     this.list.splice(i, 1);
     this.kills++;
+    this.silent++;
     this.hearScuffle(e.pos);
     return true;
   }
@@ -259,23 +346,34 @@ export class Enemies {
       } else {
         d.fig.rotation.z = (Math.PI / 2) * d.tip;
         d.fig.position.y = 0.3;
-        this.dying.splice(i, 1);   // corpse stays in the scene — a toy battlefield
+        this.corpses.push(d.fig);  // corpse stays in the scene — a toy battlefield
+        this.dying.splice(i, 1);
       }
     }
 
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
 
-      // --- Incoming player-team fire (hit sphere centered on the TORSO) ---
+      // --- Incoming player-team fire. HEAD first (a clean hit above the
+      // shoulders CRACKS for double — aim skill pays), then the torso. ---
       for (const b of bullets.active) {
         if (b.team !== 'player') continue;
         const hx = b.mesh.position.x - e.pos.x;
         const hy = b.mesh.position.y - (e.baseY + TORSO_Y);
         const hz = b.mesh.position.z - e.pos.z;
         if (hx * hx + hy * hy + hz * hz < HIT_RADIUS * HIT_RADIUS) {
-          e.hp -= b.damage;
+          const ny = b.mesh.position.y - (e.baseY + 1.93);
+          const crit = hx * hx + ny * ny + hz * hz < 0.34 * 0.34;
+          if (crit) {
+            this.headshots++;
+            sfx.crit();
+            this.hitFlash = 0.22;
+          } else {
+            this.hitFlash = 0.12;
+          }
+          e.hp -= b.damage * (crit ? 2 : 1);
           e.stagger = 0.35;                       // FLINCH: hit = can't shoot for a beat
-          this.hitFlash = 0.12;
+          e.aimT = (e.aimT || 0) * 0.4;           // and his settle rattles loose
           // Pain is intel: the tracer points back at whoever is closest.
           const shooter = this._nearestSoldier(squad, e.pos);
           this.alert(e, shooter ? shooter.position : null);
@@ -322,9 +420,10 @@ export class Enemies {
       }
 
       // Walk cycle from ground covered (patrols, hunts, repositions alike).
+      // Same cadence as the greens — see soldier.js.
       const mvd = Math.hypot(e.pos.x - (e._px ?? e.pos.x), e.pos.z - (e._pz ?? e.pos.z));
       e._px = e.pos.x; e._pz = e.pos.z;
-      e.walkPhase = (e.walkPhase || 0) + mvd * 2.6;
+      e.walkPhase = (e.walkPhase || 0) + mvd * 2.0;
       e.animAmp = (e.animAmp || 0) + ((mvd > 0.004 ? 1 : 0) - (e.animAmp || 0)) * Math.min(1, dt * 9);
       e.fig.userData.animate(e.walkPhase, e.animAmp);
 
@@ -341,6 +440,13 @@ export class Enemies {
         e.tell.visible = true;
         e.tell.material = MAT_BANG;
         e.tell.scale.set(2.1, 2.1, 1);
+      } else if (e.alerted && e.runningToRadio) {
+        // The RUNNER wears a pulsing "!" the whole way — you can pick him
+        // out of a firefight at a glance.
+        e.tell.visible = true;
+        e.tell.material = MAT_BANG;
+        const p = 1.6 + Math.sin(performance.now() * 0.02) * 0.3;
+        e.tell.scale.set(p, p, 1);
       } else if (e.alerted && e.searching) {
         e.tell.visible = true;
         e.tell.material = MAT_Q;
@@ -350,6 +456,31 @@ export class Enemies {
         e.tell.visible = false;
       }
     }
+
+    // Score the room for the music: shots exchanged recently = combat (it
+    // lingers 3s so the track doesn't stutter between bursts), anyone still
+    // hunting = tension, the house asleep = calm.
+    let anyAlert = false;
+    for (const e of this.list) if (e.alerted) { anyAlert = true; break; }
+    if (this._engaged) {
+      this._combatUntil = performance.now() + 3000;
+      this._engaged = false;
+    }
+    this.musicState = performance.now() < this._combatUntil
+      ? 'combat'
+      : anyAlert ? 'tension' : 'calm';
+  }
+
+  // How hot is the radio RIGHT NOW? 0 quiet · 1 a runner is loose ·
+  // 2 he's AT the handset calling. Drives the HUD warning.
+  get radioThreat() {
+    let t = 0;
+    for (const e of this.list) {
+      if (!e.runningToRadio) continue;
+      if (e.callT > 0) return 2;
+      t = 1;
+    }
+    return t;
   }
 
   // --- SENTRY: stand watch / walk patrol; build suspicion on what you see ---
@@ -389,9 +520,12 @@ export class Enemies {
     // (but POPPING OUT over it counts as standing). A sentry whose LAMP got
     // shot out is squinting into the dark.
     let sightR = SIGHT_RANGE * e.sightMult;
-    if (this.lamp && !this.lamp.alive &&
-        Math.hypot(e.pos.x - this.lamp.pos.x, e.pos.z - this.lamp.pos.z) < this.lamp.radius) {
-      sightR *= 0.6;
+    for (const lamp of this.lamps) {
+      if (!lamp.alive &&
+          Math.hypot(e.pos.x - lamp.pos.x, e.pos.z - lamp.pos.z) < lamp.radius) {
+        sightR *= 0.6;
+        break;
+      }
     }
     let seen = null, seenD = sightR;
     const fx = Math.sin(e.facing), fz = Math.cos(e.facing);
@@ -417,9 +551,15 @@ export class Enemies {
       // for standing in a sentry's face.
       if (seenD < SPOT_INSTANT && !sneaking) rate = Math.max(rate, 4.5);
       e.aware += dt * Math.max(0.15, rate);
+      // Suspicion crossing the line gets a SOUND — stealth is played by ear.
+      if (e.aware >= 0.5 && !e._blip) {
+        e._blip = true;
+        sfx.suspicion(seenD);
+      }
       if (e.aware >= 1) this.alert(e, seen.position);
     } else {
       e.aware = Math.max(0, e.aware - dt * AWARE_DECAY);
+      if (e.aware < 0.25) e._blip = false;
     }
   }
 
@@ -442,14 +582,21 @@ export class Enemies {
     }
 
     // RUN FOR THE RADIO: a spooked SCOUT bolts for it (he only fights
-    // cornered). ONLY scouts run — five sprinters you can see, chase, and
+    // cornered). ONLY scouts run — sprinters you can see, chase, and
     // learn; if every rifleman could call it in too, any noise anywhere
     // would guarantee the alarm. Reaching it raises it — kill the runner
-    // or kill the radio.
+    // or kill the radio. The whole act is TELEGRAPHED: he announces the
+    // run, wears a pulsing "!", and the call itself beeps for 4 seconds.
     const radio = this.radio;
+    e.runningToRadio = false;
     if (radio && radio.alive && !this.alarmRaised) {
       const wantsRun = e.runner && !(target && tDist < 9);
       if (wantsRun) {
+        e.runningToRadio = true;
+        if (!e._ranBark) {
+          e._ranBark = true;
+          barks.say(e.fig, 'CALLING IT IN!', '#ff6a50');
+        }
         const rd = Math.hypot(radio.pos.x - e.pos.x, radio.pos.z - e.pos.z);
         if (rd > 2.2) {
           e.callT = 0;
@@ -459,6 +606,13 @@ export class Enemies {
           if (dir) e.facing = Math.atan2(dir.x, dir.z);
         } else {
           e.callT += dt;                       // shouting into the handset
+          // Handset beeps climb with the call — you HEAR the window closing.
+          if (((e.callT / 0.8) | 0) !== (((e.callT - dt) / 0.8) | 0)) {
+            const d = squad.active
+              ? Math.hypot(e.pos.x - squad.active.position.x, e.pos.z - squad.active.position.z)
+              : 0;
+            sfx.callBeep(e.callT / CALL_TIME, d);
+          }
           e.facing = Math.atan2(radio.pos.x - e.pos.x, radio.pos.z - e.pos.z);
           if (e.callT > CALL_TIME) this.raiseAlarm(squad);
         }
@@ -470,6 +624,8 @@ export class Enemies {
 
     if (!target) {
       e.cover = null;
+      e.aimT = 0;                      // lost you — his settle starts over
+      e.postT = 0;
       // INVESTIGATE: walk to the last clue (a muzzle flash heard, a buddy's
       // shout, the spot we saw them) — then SEARCH on the spot.
       let arrived = true;
@@ -507,13 +663,22 @@ export class Enemies {
     e.searchT = 0;
     e.hasIntel = true;
     e.lastKnown.set(target.position.x, 0, target.position.z);
+    this._engaged = true;            // the music hears the fight
+    // SETTLING AIM: seconds-on-target tighten his cone (see the fire block).
+    e.aimT = (e.aimT || 0) + dt;
+    e.postT = (e.postT || 0) + dt;
 
     this._v.subVectors(target.position, e.pos); this._v.y = 0;
     const dist = this._v.length();
 
     e.recheck -= dt;
     if (!e.static && (e.recheck <= 0 || !e.cover)) {
-      e.cover = this._findCover(e, target);
+      // A man who's traded fire from the same spot too long SHIFTS to a
+      // different piece of cover — fights that never move are shooting
+      // galleries.
+      const stale = e.cover && e.postT > 4.5 && Math.random() < 0.5;
+      e.cover = this._findCover(e, target, stale ? e.cover : null);
+      if (stale) e.postT = 0;
       e.recheck = COVER_RECHECK;
     }
     if (e.cover && !hasLineOfSight(e.cover, target.position, this.obstacles)) e.cover = null;
@@ -544,9 +709,15 @@ export class Enemies {
       // popping out over cover raises it again.
       const aimY = (target.crouched && !target.peeking) ? 0.75 : TORSO_Y;
       const aim = new THREE.Vector3(target.position.x, aimY, target.position.z).sub(muzzle).normalize();
-      aim.x += (Math.random() - 0.5) * e.spread;
-      aim.y += (Math.random() - 0.5) * e.spread;
-      aim.z += (Math.random() - 0.5) * e.spread;
+      // SETTLING AIM: a fresh target gets wide first shots (you HEAR them
+      // snap past); ~2.5s of eyes-on tightens to true. Ducking out of sight
+      // resets him; hitting him rattles it. That's the duel: pop, trade,
+      // and get back down before he settles.
+      const settle = Math.min(1, (e.aimT || 0) / 2.5);
+      const sp = e.spread * (2.2 - 1.2 * settle);
+      aim.x += (Math.random() - 0.5) * sp;
+      aim.y += (Math.random() - 0.5) * sp;
+      aim.z += (Math.random() - 0.5) * sp;
       bullets.fire(muzzle, aim.normalize(), 'enemy', e.damage);
       // GUNNER: 4-round burst, then a long breath. Everyone else: steady.
       if (e.burst) {
@@ -571,10 +742,13 @@ export class Enemies {
     return best;
   }
 
-  _findCover(e, target) {
+  // `excl` (optional Vector3): a spot to move AWAY from — used when a man
+  // has gone stale at his post and wants a different angle.
+  _findCover(e, target, excl = null) {
     let best = null, bestScore = Infinity;
     for (const c of this.coverPoints) {
       if (c.distanceTo(e.pos) > COVER_SEARCH) continue;
+      if (excl && c.distanceTo(excl) < 4) continue;
       const dT = c.distanceTo(target.position);
       if (dT > ENEMY_RANGE) continue;
       if (!hasLineOfSight(c, target.position, this.obstacles)) continue;

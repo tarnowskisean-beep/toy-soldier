@@ -28,12 +28,13 @@ export const MISSIONS = [
       'reserve down on your head. Cut it. Then breach the front door.',
     winText: 'ESCAPED THE HOUSE — ONTO THE PORCH',
     // Who ended up where (member index in SQUAD_ORDER). pose: 'downed' (flat,
-    // 1.8s wake), 'prison' (flat, in the pen), 'hiding' (crouched upright,
-    // joins fast and healthy).
+    // hold E to wake), 'prison' (flat, in the pen), 'hiding' (crouched
+    // upright, joins fast and healthy). A hider's `zone` is where the beacon
+    // points until you're close — finding HIM is the search.
     scatter: [
       { member: 1, x: 4, z: 6 },                          // HEAVY — by the wreck
       { member: 3, x: 142, z: -38, pose: 'prison' },      // MEDIC — kitchen pen
-      { member: 2, x: 114, z: 36, pose: 'hiding' },       // SNIPER — study books
+      { member: 2, x: 114, z: 36, pose: 'hiding', zone: { x: 122, z: 28 } },  // SNIPER — somewhere in the study
     ],
     stages: [
       { type: 'regroup', text: 'FIND YOUR SQUAD',
@@ -77,12 +78,14 @@ export const MISSIONS = [
       { x: 84.5, z: 43.5, facing: Math.PI },
       { x: 78, z: 43, facing: 2.6 },
     ],
-    // The porch reserve — exists only if a runner reaches the radio.
+    // The porch reserve — exists only if a runner reaches the radio. They
+    // spawn ON THE THRESHOLD of the front door and sweep in hunting, so the
+    // alarm reads as men ARRIVING, not materializing.
     reserve: [
-      { x: 82, z: 44, facing: Math.PI },
-      { x: 87, z: 44, facing: Math.PI },
-      { x: 84.5, z: 42, facing: Math.PI },
-      { x: 80.5, z: 42.5, facing: 2.8 },
+      { x: 81.5, z: 44.6, facing: Math.PI },
+      { x: 83.8, z: 44.8, facing: Math.PI },
+      { x: 86.2, z: 44.6, facing: Math.PI },
+      { x: 88.2, z: 44.8, facing: 2.9 },
     ],
   },
   // The rest of the journey home (see docs/CAMPAIGN.md). Each unlocks when
@@ -132,7 +135,10 @@ export const MISSIONS = [
 // Mission coordinates are authored in the house's original design units;
 // stretch them once to match the world scale.
 for (const def of MISSIONS) {
-  if (def.scatter) for (const s of def.scatter) { s.x *= WORLD_SCALE; s.z *= WORLD_SCALE; }
+  if (def.scatter) for (const s of def.scatter) {
+    s.x *= WORLD_SCALE; s.z *= WORLD_SCALE;
+    if (s.zone) { s.zone.x *= WORLD_SCALE; s.zone.z *= WORLD_SCALE; }
+  }
   if (def.enemyLayout) for (const e of def.enemyLayout) {
     e.x *= WORLD_SCALE; e.z *= WORLD_SCALE;
     if (e.patrol) { e.patrol.x *= WORLD_SCALE; e.patrol.z *= WORLD_SCALE; }

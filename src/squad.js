@@ -9,6 +9,7 @@ import { Soldier } from './soldier.js';
 import { ORDER } from './soldier.js';
 import { CLASSES, SQUAD_ORDER } from './classes.js';
 import { WORLD_SCALE } from './world.js';
+import { sfx } from './audio.js';
 
 // Formation slots for the (up to 3) inactive members, RELATIVE to the leader:
 // x = left/right, z = forward/back (negative = behind). Rotated to face the
@@ -58,12 +59,15 @@ export class Squad {
     this._threat = new THREE.Vector3();
   }
 
-  // A supply drop: every living member pockets reserve ammo and a patch-up.
+  // A supply drop: every living member pockets reserve ammo and a patch-up —
+  // and the grenadier finds another frag in the crate.
   resupply(reservePct, healAmount) {
     for (const m of this.members) {
       if (!m.alive) continue;
       m.reserve = Math.min(m.cls.reserve, m.reserve + Math.round(m.cls.reserve * reservePct));
       m.heal(healAmount);
+      const ab = m.cls.ability;
+      if (ab.key === 'grenade') m.nades = Math.min(ab.max, m.nades + 1);
     }
   }
 
@@ -152,6 +156,7 @@ export class Squad {
         free: ctx.free,
         fireMode: this.fireMode,
         coverPoints: this.coverPoints,
+        leaderCrouched: a.alive && a.crouched,
         formationSlot: isActive ? null : slots[s++ % slots.length],
       });
     }
@@ -195,9 +200,28 @@ export class Squad {
   // Enemy bullets vs squad members. Called each frame from main. A hit applies
   // the bullet's damage and removes it.
   takeBulletHits(bullets) {
+    const act = this.active;
     for (let i = bullets.active.length - 1; i >= 0; i--) {
       const b = bullets.active[i];
       if (b.team !== 'enemy') continue;
+      // A round snapping past a head SUPPRESSES the man it missed — his
+      // cone rattles wide until his nerves settle. That's what cover is
+      // FOR. The crack sound plays only for the soldier whose ears you're
+      // wearing.
+      if (!b.whizzed) {
+        for (const m of this.members) {
+          if (!m.alive) continue;
+          const wx = b.mesh.position.x - m.position.x;
+          const wy = b.mesh.position.y - (m.position.y + 1.1);
+          const wz = b.mesh.position.z - m.position.z;
+          if (wx * wx + wy * wy + wz * wz < 2.1 * 2.1) {
+            b.whizzed = true;
+            m.suppression = Math.min(1, m.suppression + 0.3);
+            if (m === act) sfx.whiz();
+            break;
+          }
+        }
+      }
       for (const m of this.members) {
         if (!m.alive) continue;
         const dx = b.mesh.position.x - m.position.x;
