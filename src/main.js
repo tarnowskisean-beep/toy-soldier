@@ -59,6 +59,7 @@ bullets.onFire = (origin, team) => {
   enemies.hearGunshot(origin);
 };
 let shake = 0;
+let hitPause = 0;   // seconds of kill-frame micro-freeze left (takedowns)
 grenades.onBoom = (pos) => {
   sfx.boom(pos.distanceTo(squad.active.position));
   shake = Math.min(1, shake + Math.max(0.2, 1.1 - pos.distanceTo(squad.active.position) / 45));
@@ -465,6 +466,9 @@ function loop() {
 // One simulation+render step. Extracted from loop() so automation (and tests)
 // can step the game deterministically even when rAF is throttled.
 function tick(dt) {
+  // The kill-frame beat: for a blink after a takedown the whole sim runs at
+  // a third speed (the timer drains in real time, so it can't wind up stuck).
+  if (hitPause > 0) { hitPause -= dt; dt *= 0.3; }
   if (state === 'playing' && (input.locked || input.debugLock) && squad.alive) {
     if (input.consume('Digit1')) squad.setActive(0);
     if (input.consume('Digit2')) squad.setActive(1);
@@ -901,8 +905,12 @@ function handleInteract(dt) {
   }
   takedownEl.classList.toggle('show', !!cand && !mapMode);
   if (cand && input.consume('KeyE')) {
-    enemies.takedown(cand, squad.active.position);
-    sfx.takedown();
+    const kind = enemies.takedown(cand, squad.active.position);
+    if (kind) {
+      sfx.takedown(kind);                  // foley matched to the finisher
+      shake = Math.min(1, shake + 0.16);   // the grab lands with a little weight
+      hitPause = 0.09;                     // …and a blink of frozen time
+    }
   }
   // Cover affordances: the snap when you're near it; in it, the pop (low
   // cover), the lean (at a tall face's corner), or directions to one.

@@ -106,19 +106,63 @@ class Sfx {
     });
   }
 
-  // A body easing to the floor: one soft low thud. The whole point is how
-  // little noise it makes next to a gunshot.
-  takedown() {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+  // Foley atoms for the takedown finishers.
+  _thud(t, f0, f1, peak, decay) {
     const o = this.ctx.createOscillator();
     o.type = 'sine';
-    o.frequency.setValueAtTime(170, t);
-    o.frequency.exponentialRampToValueAtTime(70, t + 0.09);
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + decay * 0.8);
     const g = this.ctx.createGain();
-    this._env(g, t, 0.22, 0.12);
+    this._env(g, t, peak, decay);
     o.connect(g).connect(this.master);
-    o.start(t); o.stop(t + 0.14);
+    o.start(t); o.stop(t + decay + 0.05);
+  }
+
+  _scuff(t, fc, peak, dur) {
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer(dur);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = fc;
+    const g = this.ctx.createGain();
+    this._env(g, t, peak, dur);
+    noise.connect(bp).connect(g).connect(this.master);
+    noise.start(t);
+  }
+
+  _click(t, f, peak) {
+    const o = this.ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = f;
+    const g = this.ctx.createGain();
+    this._env(g, t, peak, 0.035);
+    o.connect(g).connect(this.master);
+    o.start(t); o.stop(t + 0.06);
+  }
+
+  // A body easing to the floor — quiet by DESIGN; next to a gunshot the whole
+  // point is how little noise this makes. Each finisher gets its own foley,
+  // scheduled to land with the animation's impact frames (every offset
+  // carries +0.06s, the sim time the kill-frame micro-freeze swallows).
+  takedown(kind = 'swat') {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this._scuff(t, 650, 0.13, 0.09);                 // the grab itself
+    if (kind === 'crumple') {
+      this._thud(t + 0.34, 160, 95, 0.1, 0.07);      // knees first…
+      this._thud(t + 1.06, 130, 55, 0.24, 0.16);     // …then the body, face-down
+    } else if (kind === 'spin') {
+      this._click(t + 0.04, 1250, 0.07);             // the wrench around
+      this._thud(t + 0.68, 150, 60, 0.22, 0.13);     // flat on his back
+    } else if (kind === 'drag') {
+      this._scuff(t + 0.1, 300, 0.1, 0.32);          // heels hauled across the floor
+      this._thud(t + 0.56, 140, 55, 0.22, 0.14);     // down at your boots
+      this._click(t + 0.62, 700, 0.06);              // his rifle clatters after him
+      this._click(t + 0.7, 520, 0.05);
+    } else {                                         // swat
+      this._scuff(t + 0.05, 1000, 0.1, 0.3);         // the short flight
+      this._thud(t + 0.51, 170, 70, 0.22, 0.12);     // side-first landing
+    }
   }
 
   // Magazine out, magazine in: two mechanical clicks, a beat apart.
