@@ -201,6 +201,8 @@ export class Enemies {
   // A silent takedown: the victim drops without a shot. Only the SCUFFLE is
   // audible — a buddy standing beside him hears the body drop; a lone sentry
   // dies unnoticed. This is what makes two-man posts a puzzle.
+  // Returns the finisher kind it rolled (so foley can match the animation),
+  // or false if the man was already gone.
   takedown(e, killerPos) {
     const i = this.list.indexOf(e);
     if (i === -1) return false;
@@ -210,9 +212,9 @@ export class Enemies {
     // Yaw-first rotation order so the finisher tips him over HIS OWN axes —
     // face-down means over his toes, not toward whatever north happens to be.
     e.fig.rotation.order = 'YXZ';
+    const kind = TAKEDOWN_KINDS[Math.floor(Math.random() * TAKEDOWN_KINDS.length)];
     this.dying.push({
-      fig: e.fig, t: 0,
-      kind: TAKEDOWN_KINDS[Math.floor(Math.random() * TAKEDOWN_KINDS.length)],
+      fig: e.fig, t: 0, kind,
       dx: dx / len, dz: dz / len,   // away from the killer
       yaw0: e.fig.rotation.y,
       tip: Math.random() < 0.5 ? 1 : -1,
@@ -222,7 +224,7 @@ export class Enemies {
     this.list.splice(i, 1);
     this.kills++;
     this.hearScuffle(e.pos);
-    return true;
+    return kind;
   }
 
   hearScuffle(pos) {
