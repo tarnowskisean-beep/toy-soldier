@@ -226,11 +226,16 @@ export class Soldier {
     const fwd = this.forwardVector();
     this._r.set(fwd.z, 0, -fwd.x);              // right = forward rotated 90°
 
-    let mx = 0, mz = 0;
-    if (input.isDown('KeyW')) { mx += fwd.x; mz += fwd.z; }
-    if (input.isDown('KeyS')) { mx -= fwd.x; mz -= fwd.z; }
-    if (input.isDown('KeyD')) { mx += this._r.x; mz += this._r.z; }
-    if (input.isDown('KeyA')) { mx -= this._r.x; mz -= this._r.z; }
+    // Keys are digital (0 or 1); the pad's left stick is ANALOG, so its
+    // deflection flows straight into the move vector — `len` below ends up
+    // < 1 for a half-tilted stick, which becomes a slower walk.
+    let fAmt = input.padMoveY, sAmt = input.padMoveX;   // forward / strafe
+    if (input.isDown('KeyW')) fAmt += 1;
+    if (input.isDown('KeyS')) fAmt -= 1;
+    if (input.isDown('KeyD')) sAmt += 1;
+    if (input.isDown('KeyA')) sAmt -= 1;
+    const mx = fwd.x * fAmt + this._r.x * sAmt;
+    const mz = fwd.z * fAmt + this._r.z * sAmt;
 
     const len = Math.hypot(mx, mz);
 
@@ -302,7 +307,9 @@ export class Soldier {
       if (this.crouched) speed *= 0.55;       // sneaking
       if (this.aiming) speed *= 0.55;         // walking the sights
       if (this.suppressing) speed *= 0.5;     // dug-in heavy moves slowly
-      const step = (speed * dt) / len;
+      // min(1, len): keys normalize to full speed (diagonals don't run faster),
+      // but a partly-tilted stick (len < 1) walks proportionally slower.
+      const step = (speed * dt * Math.min(1, len)) / len;
       moveBy(this.position, mx * step, mz * step, this.obstacles, 0.6, this.bounds);
     } else {
       this.sprinting = false;

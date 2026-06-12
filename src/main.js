@@ -67,6 +67,7 @@ window.game = { scene, camera, squad, bullets, enemies, grenades, input, world }
 
 // --- Campaign state machine ---
 let state = 'menu';          // 'menu' | 'brief' | 'playing' | 'won' | 'lost'
+let menuSel = 0;             // which mission row the gamepad's d-pad is on
 let mission = null;          // active MissionRunner
 let currentDef = null;       // active mission definition
 
@@ -378,7 +379,11 @@ function loop() {
 // One simulation+render step. Extracted from loop() so automation (and tests)
 // can step the game deterministically even when rAF is throttled.
 function tick(dt) {
-  if (state === 'playing' && (input.locked || input.debugLock) && squad.alive) {
+  // The pad is polled, not event-driven — ask it for fresh state before any
+  // game logic reads input. An ACTIVE pad opens the input gate the same way
+  // pointer lock does: a controller has no cursor to capture.
+  input.pollGamepad(dt);
+  if (state === 'playing' && (input.locked || input.debugLock || input.padActive) && squad.alive) {
     if (input.consume('Digit1')) squad.setActive(0);
     if (input.consume('Digit2')) squad.setActive(1);
     if (input.consume('Digit3')) squad.setActive(2);
@@ -476,6 +481,29 @@ function tick(dt) {
     objectiveEl.textContent = mission.statusText(enemies) + distTxt;
     if (mission.state === 'won') onWin();
     else if (mission.state === 'lost') onLose();
+  }
+
+  // --- Gamepad on the menu screens: d-pad picks, A confirms, B backs out ---
+  if (state === 'brief') {
+    if (input.consumePad('A')) startPlaying();
+    if (input.consumePad('B')) showMenu();
+  } else if (state === 'won') {
+    if (input.consumePad('A')) ($('nextBtn').classList.contains('hidden') ? $('winMenuBtn') : $('nextBtn')).click();
+    if (input.consumePad('B')) showMenu();
+  } else if (state === 'lost') {
+    if (input.consumePad('A')) $('retryBtn').click();
+    if (input.consumePad('B')) showMenu();
+  } else if (state === 'menu') {
+    const items = [...$('missionList').children].filter((el) => !el.classList.contains('locked'));
+    if (items.length) {
+      if (input.consumePad('Up')) menuSel--;
+      if (input.consumePad('Down')) menuSel++;
+      menuSel = ((menuSel % items.length) + items.length) % items.length;
+      // Only paint the highlight once the pad has been touched — mouse users
+      // shouldn't see a phantom selection.
+      items.forEach((el, i) => el.classList.toggle('sel', i === menuSel && input.padActive));
+      if (input.consumePad('A')) items[menuSel].click();
+    }
   }
 
   input.endFrame();

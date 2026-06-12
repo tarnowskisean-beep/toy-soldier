@@ -170,6 +170,9 @@
         border: 2px solid #eaffea; border-radius: 6px; padding: 12px 16px; cursor: pointer;
         background: rgba(0,0,0,0.18); text-align: left; transition: background 0.12s; }
       .mission:hover { background: rgba(255,255,255,0.14); }
+      /* The gamepad's d-pad cursor — same glow as hover, plus an edge so it
+         reads from across the room (couch distance). */
+      .mission.sel { background: rgba(255,255,255,0.14); outline: 2px solid #9fe8ff; }
       .mission .m-name { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
       .mission .m-sector { font-size: 12px; opacity: 0.75; }
       .mission.locked { opacity: 0.4; cursor: not-allowed; border-style: dashed; }
@@ -236,6 +239,7 @@
         <div class="row"><b>X</b> hold fire / weapons free • <b>M</b> map • follow the <b>green beacon</b> to the current objective</div>
         <div class="row"><b>E</b> also REVIVES a downed buddy <i>(hold — medic is fastest)</i></div>
         <div class="row"><b>SPACE</b> grenade / revive / dig in <i>(by class)</i></div>
+        <div class="row"><b>🎮 PAD</b> sticks move/look • <b>RT</b> fire • <b>LT</b> aim • <b>A</b> interact • <b>B</b> cover • <b>X</b> reload • <b>Y</b> ability • <b>L3</b> sprint • <b>RB</b> order • <b>LB</b> switch • <b>D-PAD</b> regroup/hold/fire-mode • <b>VIEW</b> map</div>
         <div class="btnrow"><div class="btn" id="deployBtn">DEPLOY</div><div class="btn" id="briefMenuBtn">MENU</div></div>
       </div>
 
